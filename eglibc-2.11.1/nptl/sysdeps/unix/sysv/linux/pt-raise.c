@@ -23,11 +23,14 @@
 #include <tls.h>
 #include <kernel-features.h>
 
+#include <flexsc/assert.h>
 
 int
 raise (sig)
      int sig;
 {
+    flexsc_check_enabled();
+    
 #if __ASSUME_TGKILL || defined __NR_tgkill
   /* raise is an async-safe function.  It could be called while the
      fork function temporarily invalidated the PID field.  Adjust for

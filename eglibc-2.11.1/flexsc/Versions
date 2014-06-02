@@ -1,0 +1,8 @@
+libc {
+  GLIBC_2.0 {
+    # flexsc*
+    flexsc_init; flexsc_init_cpus; flexsc_enabled; flexsc_init_callback;
+    flexsc_debug; flexsc_debug_nolock; flexsc_debug_lock; flexsc_debug_unlock;
+    __flexsc_syscall_handle;
+  }
+}

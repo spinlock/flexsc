@@ -1,0 +1,24 @@
+NCPU := $(shell echo "`cat /proc/cpuinfo | grep processor | wc -l` * 2" | bc)
+V := @
+
+CONFIG	:= --disable-profile --enable-build-now --disable-stackguard-randomization \
+	--enable-old-ssp-compat --without-selinux --without-cvs --without-gd \
+	--enable-add-ons=nptl --without-selinux --without-cvs --prefix=/usr
+
+all:
+	cd __build && make
+
+install:
+	cd __build && make install
+
+config:
+	rm -rf __build; mkdir -p __build; cd __build; \
+	echo "CFLAGS += -fno-stack-protector -U_FORTIFY_SOURCE" >> configparms; \
+	../configure $(CONFIG) && sed -e "s/# PARALLELMFLAGS = -j 4/PARALLELMFLAGS = -j $(NCPU)/g" Makefile -i
+
+clean:
+	rm -rf __build
+
+reset:
+	yes "y" | apt-get install --reinstall libc-bin libc-dev libc-dev-bin libc6-dev
+	yes "y" | apt-get install --reinstall libc6

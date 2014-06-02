@@ -23,7 +23,6 @@
 /* For the calculation see asm/vsyscall.h.  */
 #define VSYSCALL_ADDR_vgettimeofday	0xffffffffff600000
 
-
 ENTRY (__gettimeofday)
 	/* Align stack.  */
 	sub	$0x8, %rsp
@@ -35,6 +34,7 @@ ENTRY (__gettimeofday)
 	movq	$VSYSCALL_ADDR_vgettimeofday, %rax
 #endif
 	callq	*%rax
+    
 	/* Check error return.  */
 	cmpl	$-4095, %eax
 	jae	SYSCALL_ERROR_LABEL

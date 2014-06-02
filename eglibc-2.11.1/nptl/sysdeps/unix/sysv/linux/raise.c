@@ -24,11 +24,14 @@
 #include <nptl/pthreadP.h>
 #include <kernel-features.h>
 
+#include <flexsc/assert.h>
 
 int
 raise (sig)
      int sig;
 {
+    flexsc_check_enabled();
+                         
   struct pthread *pd = THREAD_SELF;
 #if __ASSUME_TGKILL || defined __NR_tgkill
   pid_t pid = THREAD_GETMEM (pd, pid);

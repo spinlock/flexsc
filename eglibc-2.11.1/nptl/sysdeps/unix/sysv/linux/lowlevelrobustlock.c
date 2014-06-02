@@ -23,10 +23,13 @@
 #include <sys/time.h>
 #include <pthreadP.h>
 
+#include <flexsc/assert.h>
 
 int
 __lll_robust_lock_wait (int *futex, int private)
 {
+    flexsc_check_enabled();
+    
   int oldval = *futex;
   int tid = THREAD_GETMEM (THREAD_SELF, tid);
 
@@ -60,6 +63,8 @@ int
 __lll_robust_timedlock_wait (int *futex, const struct timespec *abstime,
 			     int private)
 {
+    flexsc_check_enabled();
+    
   /* Reject invalid timeouts.  */
   if (abstime->tv_nsec < 0 || abstime->tv_nsec >= 1000000000)
     return EINVAL;

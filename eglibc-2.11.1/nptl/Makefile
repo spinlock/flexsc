@@ -126,7 +126,10 @@ libpthread-routines = nptl-init vars events version \
 		      pthread_mutexattr_setprotocol \
 		      pthread_mutexattr_getprioceiling \
 		      pthread_mutexattr_setprioceiling tpp \
-		      pthread_mutex_getprioceiling pthread_mutex_setprioceiling
+		      pthread_mutex_getprioceiling pthread_mutex_setprioceiling \
+              flexsc flexsc_init flexsc_fiber flexsc_thread \
+              flexsc_clone flexsc_switch \
+			  flexsc_pthread flexsc_init.l flexsc_init.y
 #		      pthread_setuid pthread_seteuid pthread_setreuid \
 #		      pthread_setresuid \
 #		      pthread_setgid pthread_setegid pthread_setregid \

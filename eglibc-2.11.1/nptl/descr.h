@@ -340,6 +340,7 @@ struct pthread
      to the function.  */
   void *(*start_routine) (void *);
   void *arg;
+  void *flexsc_owner;
 
   /* Debug state.  */
   td_eventbuf_t eventbuf;

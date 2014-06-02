@@ -32,7 +32,6 @@
 
 #include <shlib-compat.h>
 
-
 /* Local function to start thread and handle cleanup.  */
 static int start_thread (void *arg);
 
@@ -56,12 +55,15 @@ unsigned int __nptl_nthreads = 1;
 /* Code to create the thread.  */
 #include <createthread.c>
 
+#include "flexsc_pthread.h"
 
 struct pthread *
 internal_function
 __find_in_stack_list (pd)
      struct pthread *pd;
 {
+    flexsc_check_enabled();
+    
   list_t *entry;
   struct pthread *result = NULL;
 
@@ -103,6 +105,8 @@ void
 attribute_hidden
 __nptl_deallocate_tsd (void)
 {
+    flexsc_check_enabled();
+    
   struct pthread *self = THREAD_SELF;
 
   /* Maybe no data was ever allocated.  This happens often so we have
@@ -198,6 +202,8 @@ void
 internal_function
 __free_tcb (struct pthread *pd)
 {
+    flexsc_check_enabled();
+    
   /* The thread is exiting now.  */
   if (__builtin_expect (atomic_bit_test_set (&pd->cancelhandling,
 					     TERMINATED_BIT) == 0, 1))
@@ -442,6 +448,10 @@ __pthread_create_2_1 (newthread, attr, start_routine, arg)
      void *(*start_routine) (void *);
      void *arg;
 {
+    if (likely(flexsc_enabled())) {
+        return flexsc_pthread_create(newthread, attr, start_routine, arg);
+    }
+    
   STACK_VARIABLES;
 
   const struct pthread_attr *iattr = (struct pthread_attr *) attr;
@@ -475,6 +485,7 @@ __pthread_create_2_1 (newthread, attr, start_routine, arg)
      get the information from its thread descriptor.  */
   pd->start_routine = start_routine;
   pd->arg = arg;
+  pd->flexsc_owner = pd;
 
   /* Copy the thread attribute flags.  */
   struct pthread *self = THREAD_SELF;
@@ -577,6 +588,8 @@ __pthread_create_2_0 (newthread, attr, start_routine, arg)
      void *(*start_routine) (void *);
      void *arg;
 {
+    flexsc_check_enabled();
+    
   /* The ATTR attribute is not really of type `pthread_attr_t *'.  It has
      the old size and access to the new members might crash the program.
      We convert the struct now.  */

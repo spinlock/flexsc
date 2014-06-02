@@ -111,6 +111,17 @@ libpthread {
     # Functions which previously have been overwritten.
     sigwait; sigaction; __sigaction; _exit; _Exit; longjmp; siglongjmp;
     raise;
+
+    # flexsc.c
+    flexsc_fiber; flexsc_wait; flexsc_exit;
+
+    # flexsc_init.c
+    flexsc_nptl_init;
+
+    # flexsc_thread.c
+    flexsc_nptl_syscall;
+
+    flexsc_set_mbox_rate;
   }
 
   GLIBC_2.1 {

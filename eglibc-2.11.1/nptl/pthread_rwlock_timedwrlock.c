@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include <pthreadP.h>
 
+#include <flexsc/assert.h>
 
 /* Try to acquire write lock for RWLOCK or return after specfied time.	*/
 int
@@ -30,6 +31,8 @@ pthread_rwlock_timedwrlock (rwlock, abstime)
      pthread_rwlock_t *rwlock;
      const struct timespec *abstime;
 {
+    flexsc_check_enabled();
+    
   int result = 0;
 
   /* Make sure we are along.  */

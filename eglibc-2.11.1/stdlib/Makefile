@@ -28,7 +28,7 @@ headers	:= stdlib.h bits/stdlib.h bits/stdlib-ldbl.h			      \
 	   inttypes.h stdint.h bits/wordsize.h				      \
 	   errno.h sys/errno.h bits/errno.h				      \
 	   ucontext.h sys/ucontext.h					      \
-	   alloca.h fmtmsg.h
+	   alloca.h fmtmsg.h flexsc.h
 
 routines-y	:=							      \
 	atof atoi atol atoll						      \

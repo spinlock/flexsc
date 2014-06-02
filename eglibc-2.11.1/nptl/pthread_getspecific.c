@@ -20,50 +20,63 @@
 #include <stdlib.h>
 #include "pthreadP.h"
 
+#include <flexsc/assert.h>
+#include "flexsc_pthread.h"
 
 void *
 __pthread_getspecific (key)
-     pthread_key_t key;
-{
-  struct pthread_key_data *data;
+     pthread_key_t key; {
+    struct pthread_key_data *data;
 
-  /* Special case access to the first 2nd-level block.  This is the
-     usual case.  */
-  if (__builtin_expect (key < PTHREAD_KEY_2NDLEVEL_SIZE, 1))
-    data = &THREAD_SELF->specific_1stblock[key];
-  else
+    /* Special case access to the first 2nd-level block.  This is the
+       usual case.  */
+    if (__builtin_expect (key < PTHREAD_KEY_2NDLEVEL_SIZE, 1)) {
+        if (likely(flexsc_enabled())) {
+            data = flexsc_specific_1stblock(key, NULL);
+        }
+        else { 
+            data = &THREAD_SELF->specific_1stblock[key];
+        }
+    }
+    else {
+        /* Verify the key is sane.  */
+        if (key >= PTHREAD_KEYS_MAX)
+            /* Not valid.  */
+            return NULL;
+        
+        unsigned int idx1st = key / PTHREAD_KEY_2NDLEVEL_SIZE;
+        unsigned int idx2nd = key % PTHREAD_KEY_2NDLEVEL_SIZE;
+
+        if (likely(flexsc_enabled())) {
+            if ((data = flexsc_specific_mtxblock(idx1st, idx2nd, NULL)) == NULL) {
+                return NULL;
+            }
+        }
+        else {
+            /* If the sequence number doesn't match or the key cannot be defined
+               for this thread since the second level array is not allocated
+               return NULL, too.  */
+            struct pthread_key_data *level2 = THREAD_GETMEM_NC (THREAD_SELF,
+                                                                specific, idx1st);
+            if (level2 == NULL)
+                /* Not allocated, therefore no data.  */
+                return NULL;
+            
+            /* There is data.  */
+            data = &level2[idx2nd];
+        }
+    }
+    
+    void *result = data->data;
+    if (result != NULL)
     {
-      /* Verify the key is sane.  */
-      if (key >= PTHREAD_KEYS_MAX)
-	/* Not valid.  */
-	return NULL;
+        uintptr_t seq = data->seq;
 
-      unsigned int idx1st = key / PTHREAD_KEY_2NDLEVEL_SIZE;
-      unsigned int idx2nd = key % PTHREAD_KEY_2NDLEVEL_SIZE;
-
-      /* If the sequence number doesn't match or the key cannot be defined
-	 for this thread since the second level array is not allocated
-	 return NULL, too.  */
-      struct pthread_key_data *level2 = THREAD_GETMEM_NC (THREAD_SELF,
-							  specific, idx1st);
-      if (level2 == NULL)
-	/* Not allocated, therefore no data.  */
-	return NULL;
-
-      /* There is data.  */
-      data = &level2[idx2nd];
+        if (__builtin_expect (seq != __pthread_keys[key].seq, 0))
+            result = data->data = NULL;
     }
 
-  void *result = data->data;
-  if (result != NULL)
-    {
-      uintptr_t seq = data->seq;
-
-      if (__builtin_expect (seq != __pthread_keys[key].seq, 0))
-	result = data->data = NULL;
-    }
-
-  return result;
+    return result;
 }
 strong_alias (__pthread_getspecific, pthread_getspecific)
 strong_alias (__pthread_getspecific, __pthread_getspecific_internal)

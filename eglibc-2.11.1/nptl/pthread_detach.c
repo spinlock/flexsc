@@ -21,11 +21,16 @@
 #include "pthreadP.h"
 #include <atomic.h>
 
+#include "flexsc_pthread.h"
 
 int
 pthread_detach (th)
      pthread_t th;
 {
+    if (likely(flexsc_enabled())) {
+        return flexsc_pthread_detach(th);
+    }
+
   struct pthread *pd = (struct pthread *) th;
 
   /* Make sure the descriptor is valid.  */

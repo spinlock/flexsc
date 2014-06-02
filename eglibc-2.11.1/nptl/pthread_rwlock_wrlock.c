@@ -23,6 +23,9 @@
 #include <pthread.h>
 #include <pthreadP.h>
 
+#include <flexsc/assert.h>
+
+extern unsigned int flexsc_get_current_fid(void);
 
 /* Acquire write lock for RWLOCK.  */
 int
@@ -40,7 +43,15 @@ __pthread_rwlock_wrlock (rwlock)
       if (rwlock->__data.__writer == 0 && rwlock->__data.__nr_readers == 0)
 	{
 	  /* Mark self as writer.  */
-	  rwlock->__data.__writer = THREAD_GETMEM (THREAD_SELF, tid);
+        pid_t id;
+        if (likely(flexsc_enabled())) {
+            id = flexsc_get_current_fid();
+        }
+        else {
+            id = THREAD_GETMEM (THREAD_SELF, tid);
+        }
+ 
+	  rwlock->__data.__writer = id;
 	  break;
 	}
 

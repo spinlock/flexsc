@@ -25,6 +25,7 @@
 #include <pthreadP.h>
 #include <shlib-compat.h>
 
+#include <flexsc/assert.h>
 
 /* Defined in pthread_setaffinity.c.  */
 extern size_t __kernel_cpumask_size attribute_hidden;
@@ -35,6 +36,8 @@ int
 __pthread_attr_setaffinity_new (pthread_attr_t *attr, size_t cpusetsize,
 				const cpu_set_t *cpuset)
 {
+    flexsc_check_enabled();
+    
   struct pthread_attr *iattr;
 
   assert (sizeof (*attr) >= sizeof (struct pthread_attr));

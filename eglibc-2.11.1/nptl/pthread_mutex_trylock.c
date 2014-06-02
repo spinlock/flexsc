@@ -23,11 +23,52 @@
 #include "pthreadP.h"
 #include <lowlevellock.h>
 
+#include <flexsc/assert.h>
+
+extern int flexsc_get_current_fid(void);
+
+static int
+__flexsc_pthread_mutex_trylock(pthread_mutex_t *mutex) {
+    pid_t id = flexsc_get_current_fid();
+    switch (__builtin_expect (PTHREAD_MUTEX_TYPE (mutex), PTHREAD_MUTEX_TIMED_NP)) {
+    case PTHREAD_MUTEX_RECURSIVE_NP:
+        if (mutex->__data.__owner == id) {
+            if (__builtin_expect (mutex->__data.__count + 1 == 0, 0)) {
+                return EAGAIN;
+            }
+            ++ mutex->__data.__count;
+            return 0;
+        }
+        if (lll_trylock (mutex->__data.__lock) == 0) {
+            mutex->__data.__owner = id;
+            mutex->__data.__count = 1;
+            ++ mutex->__data.__nusers;
+            return 0;
+        }
+        return EBUSY;
+
+    case PTHREAD_MUTEX_ERRORCHECK_NP:
+    case PTHREAD_MUTEX_TIMED_NP:
+    case PTHREAD_MUTEX_ADAPTIVE_NP:
+        if (lll_trylock (mutex->__data.__lock) != 0) {
+            return EBUSY;
+        }
+        mutex->__data.__owner = id;
+        ++ mutex->__data.__nusers;
+        return 0;
+    default:
+        flexsc_panic("unhandled trylock.\n");
+    }
+}
 
 int
 __pthread_mutex_trylock (mutex)
      pthread_mutex_t *mutex;
 {
+    if (likely(flexsc_enabled())) {
+        return __flexsc_pthread_mutex_trylock(mutex);
+    }
+    
   int oldval;
   pid_t id = THREAD_GETMEM (THREAD_SELF, tid);
 

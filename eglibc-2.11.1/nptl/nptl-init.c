@@ -295,6 +295,8 @@ __pthread_initialize_minimal_internal (void)
   THREAD_SETMEM (pd, cpuclock_offset, GL(dl_cpuclock_offset));
 #endif
 
+  pd->flexsc_owner = pd;
+
   /* Initialize the robust mutex data.  */
 #ifdef __PTHREAD_MUTEX_HAVE_PREV
   pd->robust_prev = &pd->robust_head;

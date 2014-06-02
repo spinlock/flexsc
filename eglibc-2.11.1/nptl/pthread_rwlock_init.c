@@ -27,7 +27,6 @@ static const struct pthread_rwlockattr default_attr =
     .pshared = PTHREAD_PROCESS_PRIVATE
   };
 
-
 int
 __pthread_rwlock_init (rwlock, attr)
      pthread_rwlock_t *rwlock;

@@ -71,7 +71,6 @@
 /* For the calculation see asm/vsyscall.h.  */
 #define VSYSCALL_ADDR_vgettimeofday	0xffffffffff600000
 
-
 	.globl	__lll_lock_wait_private
 	.type	__lll_lock_wait_private,@function
 	.hidden	__lll_lock_wait_private
@@ -91,8 +90,29 @@ __lll_lock_wait_private:
 	cmpl	%edx, %eax	/* NB:	 %edx == 2 */
 	jne	2f
 
-1:	movl	$SYS_futex, %eax
-	syscall
+/* 1:	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+1:  
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 2:	movl	%edx, %eax
 	xchgl	%eax, (%rdi)	/* NB:	 lock is implied */
@@ -130,8 +150,29 @@ __lll_lock_wait:
 	cmpl	%edx, %eax	/* NB:	 %edx == 2 */
 	jne	2f
 
-1:	movl	$SYS_futex, %eax
-	syscall
+/* 1:	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+1:  
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 2:	movl	%edx, %eax
 	xchgl	%eax, (%rdi)	/* NB:	 lock is implied */
@@ -180,9 +221,31 @@ __lll_timedlock_wait:
 	cmpl	%edx, %eax
 	jne	2f
 
-1:	movl	$SYS_futex, %eax
-	movl	$2, %edx
-	syscall
+/* 1:	movl	$SYS_futex, %eax */
+/* 	movl	$2, %edx */
+/* 	syscall */
+
+1:  movl $2, %edx
+    
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 2:	xchgl	%edx, (%rdi)	/* NB:   lock is implied */
 
@@ -246,7 +309,7 @@ __lll_timedlock_wait:
 	movq	$VSYSCALL_ADDR_vgettimeofday, %rax
 	/* This is a regular function call, all caller-save registers
 	   might be clobbered.  */
-	callq	*%rax
+	callq	*%rax 
 
 	/* Compute relative timeout.  */
 	movq	8(%rsp), %rax
@@ -273,8 +336,28 @@ __lll_timedlock_wait:
 	movl	24(%rsp), %esi
 	LOAD_FUTEX_WAIT (%esi)
 	movq	%r12, %rdi
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	/* NB: %edx == 2 */
 	xchgl	%edx, (%r12)
@@ -330,8 +413,28 @@ __lll_unlock_wake_private:
 	movl	$0, (%rdi)
 	LOAD_PRIVATE_FUTEX_WAKE (%esi)
 	movl	$1, %edx	/* Wake one thread.  */
-	movl	$SYS_futex, %eax
-	syscall
+/* 	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	popq	%rdx
 	cfi_adjust_cfa_offset(-8)
@@ -360,8 +463,28 @@ __lll_unlock_wake:
 	movl	$0, (%rdi)
 	LOAD_FUTEX_WAKE (%esi)
 	movl	$1, %edx	/* Wake one thread.  */
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	popq	%rdx
 	cfi_adjust_cfa_offset(-8)
@@ -428,8 +551,28 @@ __lll_timedwait_tid:
 	movl	$FUTEX_WAIT, %esi
 #endif
 	movq	%r12, %rdi
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	cmpl	$0, (%rdi)
 	jne	1f

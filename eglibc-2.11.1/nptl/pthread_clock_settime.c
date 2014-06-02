@@ -22,11 +22,14 @@
 #include <libc-internal.h>
 #include "pthreadP.h"
 
+#include <flexsc/assert.h>
 
 #if HP_TIMING_AVAIL
 int
 __pthread_clock_settime (clockid_t clock_id, hp_timing_t offset)
 {
+    flexsc_check_enabled();
+    
   /* This is the ID of the thread we are looking for.  */
   pid_t tid = ((unsigned int) clock_id) >> CLOCK_IDFIELD_SIZE;
 

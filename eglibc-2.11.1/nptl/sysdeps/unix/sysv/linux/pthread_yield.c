@@ -20,11 +20,15 @@
 #include <pthread.h>
 #include <sched.h>
 
+#include "flexsc_pthread.h"
 
 /* With the 1-on-1 model we implement this function is equivalent to
    the 'sched_yield' function.  */
 int
 pthread_yield (void)
 {
+    if (likely(flexsc_enabled())) {
+        return flexsc_pthread_yield();
+    }
   return sched_yield ();
 }

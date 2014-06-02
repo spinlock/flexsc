@@ -22,7 +22,6 @@
 #include <pthreadP.h>
 #include <sysdep.h>
 
-
 int
 pthread_sigmask (how, newmask, oldmask)
      int how;

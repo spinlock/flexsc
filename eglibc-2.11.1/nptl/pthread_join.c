@@ -23,6 +23,7 @@
 #include <atomic.h>
 #include "pthreadP.h"
 
+#include "flexsc_pthread.h"
 
 static void
 cleanup (void *arg)
@@ -40,6 +41,10 @@ pthread_join (threadid, thread_return)
      pthread_t threadid;
      void **thread_return;
 {
+    if (likely(flexsc_enabled())) {
+        return flexsc_pthread_join(threadid, thread_return);
+    }
+
   struct pthread *pd = (struct pthread *) threadid;
 
   /* Make sure the descriptor is valid.  */

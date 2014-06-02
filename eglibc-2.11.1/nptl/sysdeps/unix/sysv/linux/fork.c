@@ -48,10 +48,13 @@ fresetlockfiles (void)
     _IO_lock_init (*((_IO_lock_t *) _IO_iter_file(i)->_lock));
 }
 
+#include <flexsc/assert.h>
 
 pid_t
 __libc_fork (void)
 {
+    flexsc_check_enabled();
+    
   pid_t pid;
   struct used_handler
   {

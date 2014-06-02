@@ -24,12 +24,17 @@
 #include <sysdep.h>
 #include <kernel-features.h>
 
+#include "flexsc_pthread.h"
 
 int
 __pthread_kill (threadid, signo)
      pthread_t threadid;
      int signo;
 {
+    if (likely(flexsc_enabled())) {
+        return flexsc_pthread_kill(threadid, signo);
+    }
+    
   struct pthread *pd = (struct pthread *) threadid;
 
   /* Make sure the descriptor is valid.  */

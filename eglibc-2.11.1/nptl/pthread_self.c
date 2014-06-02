@@ -20,10 +20,15 @@
 #include "pthreadP.h"
 #include <tls.h>
 
+#include "flexsc_pthread.h"
 
 pthread_t
 __pthread_self (void)
 {
+    if (likely(flexsc_enabled())) {
+        return flexsc_pthread_self();
+    }
+    
   return (pthread_t) THREAD_SELF;
 }
 strong_alias (__pthread_self, pthread_self)

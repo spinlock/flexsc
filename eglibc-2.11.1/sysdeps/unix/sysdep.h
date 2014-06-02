@@ -56,4 +56,35 @@
 
 /* Wrappers around system calls should normally inline the system call code.
    But sometimes it is not possible or implemented and we use this code.  */
-#define INLINE_SYSCALL(name, nr, args...) __syscall_##name (args)
+/* #define INLINE_SYSCALL(name, nr, args...) __syscall_##name (args) */
+
+#ifndef __FLEXSC_LOAD_X
+#define __FLEXSC_LOAD_X
+#  define __FLEXSC_LOAD_ARGS_0()
+#  define __FLEXSC_LOAD_ARGS_1(a0)              \
+    __FLEXSC_LOAD_ARGS_0();                     \
+    __sysargs[0] = (long)(a0);
+#  define __FLEXSC_LOAD_ARGS_2(a0, a1)          \
+    __FLEXSC_LOAD_ARGS_1(a0);                   \
+    __sysargs[1] = (long)(a1);
+#  define __FLEXSC_LOAD_ARGS_3(a0, a1, a2)      \
+    __FLEXSC_LOAD_ARGS_2(a0, a1);               \
+    __sysargs[2] = (long)(a2);
+#  define __FLEXSC_LOAD_ARGS_4(a0, a1, a2, a3)  \
+    __FLEXSC_LOAD_ARGS_3(a0, a1, a2);           \
+    __sysargs[3] = (long)(a3);
+#  define __FLEXSC_LOAD_ARGS_5(a0, a1, a2, a3, a4)  \
+    __FLEXSC_LOAD_ARGS_4(a0, a1, a2, a3);           \
+    __sysargs[4] = (long)(a4);
+#  define __FLEXSC_LOAD_ARGS_6(a0, a1, a2, a3, a4, a5)  \
+    __FLEXSC_LOAD_ARGS_5(a0, a1, a2, a3, a4);           \
+    __sysargs[5] = (long)(a5);
+#endif /* !__FLEXSC_LOAD_X */
+
+#define INLINE_SYSCALL(name, nr, args...) ({                                                \
+            extern long (*__flexsc_syscall_handle)(long sysargs[], unsigned int sysname);   \
+            long __sysargs[8];                                                              \
+            __FLEXSC_LOAD_ARGS_##nr(args);                                                  \
+            __sysargs[6] = (unsigned int)(name);                                            \
+            __flexsc_syscall_handle(__sysargs, name);                                       \
+        })

@@ -263,6 +263,8 @@ libc_hidden_proto (__libc_lock_lock_fn);
 #define __libc_rwlock_wrlock(NAME) \
   __libc_ptf_call (__pthread_rwlock_wrlock, (&(NAME)), 0)
 
+#include <flexsc/assert.h>
+
 /* Lock the recursive named lock variable.  */
 #if defined _LIBC && (!defined NOT_IN_libc || defined IS_IN_libpthread)
 # if __OPTION_EGLIBC_BIG_MACROS != 1
@@ -273,16 +275,17 @@ extern void __libc_lock_lock_recursive_fn (__libc_lock_recursive_t *);
 libc_hidden_proto (__libc_lock_lock_recursive_fn);
 # endif /* __OPTION_EGLIBC_BIG_MACROS != 1 */
 # if __OPTION_EGLIBC_BIG_MACROS
-# define __libc_lock_lock_recursive(NAME) \
-  do {									      \
-    void *self = THREAD_SELF;						      \
-    if ((NAME).owner != self)						      \
-      {									      \
-	lll_lock ((NAME).lock, LLL_PRIVATE);				      \
-	(NAME).owner = self;						      \
-      }									      \
-    ++(NAME).cnt;							      \
-  } while (0)
+# define __libc_lock_lock_recursive(NAME)           \
+    do {                                            \
+        flexsc_check_enabled();                     \
+        void *self = THREAD_SELF;                   \
+        if ((NAME).owner != self)                   \
+        {                                           \
+            lll_lock ((NAME).lock, LLL_PRIVATE);    \
+            (NAME).owner = self;                    \
+        }                                           \
+        ++(NAME).cnt;                               \
+    } while (0)
 # else
 # define __libc_lock_lock_recursive(NAME)				\
   __libc_lock_lock_recursive_fn (&(NAME))
@@ -327,24 +330,25 @@ extern int __libc_lock_trylock_recursive_fn (__libc_lock_recursive_t *);
 libc_hidden_proto (__libc_lock_trylock_recursive_fn);
 # endif /* __OPTION_EGLIBC_BIG_MACROS != 1 */
 # if __OPTION_EGLIBC_BIG_MACROS
-# define __libc_lock_trylock_recursive(NAME) \
-  ({									      \
-    int result = 0;							      \
-    void *self = THREAD_SELF;						      \
-    if ((NAME).owner != self)						      \
-      {									      \
-	if (lll_trylock ((NAME).lock) == 0)				      \
-	  {								      \
-	    (NAME).owner = self;					      \
-	    (NAME).cnt = 1;						      \
-	  }								      \
-	else								      \
-	  result = EBUSY;						      \
-      }									      \
-    else								      \
-      ++(NAME).cnt;							      \
-    result;								      \
-  })
+# define __libc_lock_trylock_recursive(NAME)    \
+    ({                                          \
+        flexsc_check_enabled();                 \
+        int result = 0;                         \
+        void *self = THREAD_SELF;               \
+        if ((NAME).owner != self)               \
+        {                                       \
+            if (lll_trylock ((NAME).lock) == 0) \
+            {                                   \
+                (NAME).owner = self;            \
+                (NAME).cnt = 1;                 \
+            }                                   \
+            else                                \
+                result = EBUSY;                 \
+        }                                       \
+        else                                    \
+            ++(NAME).cnt;                       \
+        result;                                 \
+    })
 # else
 # define __libc_lock_trylock_recursive(NAME) \
   __libc_lock_trylock_recursive_fn (&(NAME))
@@ -391,14 +395,15 @@ libc_hidden_proto (__libc_lock_unlock_recursive_fn);
 # endif /* __OPTION_EGLIBC_BIG_MACROS != 1 */
 # if __OPTION_EGLIBC_BIG_MACROS
 /* We do no error checking here.  */
-# define __libc_lock_unlock_recursive(NAME) \
-  do {									      \
-    if (--(NAME).cnt == 0)						      \
-      {									      \
-	(NAME).owner = NULL;						      \
-	lll_unlock ((NAME).lock, LLL_PRIVATE);				      \
-      }									      \
-  } while (0)
+# define __libc_lock_unlock_recursive(NAME)         \
+    do {                                            \
+        flexsc_check_enabled();                     \
+        if (--(NAME).cnt == 0)                      \
+        {                                           \
+            (NAME).owner = NULL;                    \
+            lll_unlock ((NAME).lock, LLL_PRIVATE);  \
+        }                                           \
+    } while (0)
 # else
 # define __libc_lock_unlock_recursive(NAME) \
   __libc_lock_unlock_recursive_fn (&(NAME))

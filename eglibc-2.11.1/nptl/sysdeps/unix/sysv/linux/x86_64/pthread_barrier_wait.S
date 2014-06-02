@@ -62,8 +62,28 @@ pthread_barrier_wait:
 	orl	PRIVATE(%rdi), %esi
 #endif
 	xorq	%r10, %r10
-8:	movl	$SYS_futex, %eax
-	syscall
+/* 8:	movl	$SYS_futex, %eax */
+/*	syscall */
+8:  
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	/* Don't return on spurious wakeups.  The syscall does not change
 	   any register except %eax so there is no need to reload any of
@@ -109,8 +129,28 @@ pthread_barrier_wait:
 	movl	$0x7fffffff, %edx
 	movl	$FUTEX_WAKE, %esi
 	orl	PRIVATE(%rdi), %esi
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	/* Increment LEFT.  If this brings the count back to the
 	   initial count unlock the object.  */

@@ -27,7 +27,6 @@
 #include <shlib-compat.h>
 #include <kernel-features.h>
 
-
 int
 __pthread_cond_broadcast (cond)
      pthread_cond_t *cond;

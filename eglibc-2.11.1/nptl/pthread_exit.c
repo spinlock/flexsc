@@ -20,11 +20,17 @@
 #include <stdlib.h>
 #include "pthreadP.h"
 
+#include "flexsc_pthread.h"
 
 void
 __pthread_exit (value)
      void *value;
 {
+    if (likely(flexsc_enabled())) {
+        flexsc_pthread_exit(value);
+        return ;
+    }
+    
   THREAD_SETMEM (THREAD_SELF, result, value);
 
   __do_cancel ();

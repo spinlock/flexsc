@@ -35,7 +35,6 @@ static const struct pthread_mutexattr default_attr =
 static int tpi_supported;
 #endif
 
-
 int
 __pthread_mutex_init (mutex, mutexattr)
      pthread_mutex_t *mutex;

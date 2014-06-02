@@ -23,12 +23,15 @@
 #include <atomic.h>
 #include "pthreadP.h"
 
+#include <flexsc/assert.h>
 
 int
 pthread_tryjoin_np (threadid, thread_return)
      pthread_t threadid;
      void **thread_return;
 {
+    flexsc_check_enabled();
+    
   struct pthread *self;
   struct pthread *pd = (struct pthread *) threadid;
 

@@ -21,6 +21,9 @@
 #include "pthreadP.h"
 #include <lowlevellock.h>
 
+#include <flexsc/assert.h>
+
+extern unsigned int flexsc_get_current_fid(void);
 
 int
 __pthread_rwlock_trywrlock (rwlock)
@@ -32,7 +35,16 @@ __pthread_rwlock_trywrlock (rwlock)
 
   if (rwlock->__data.__writer == 0 && rwlock->__data.__nr_readers == 0)
     {
-      rwlock->__data.__writer = THREAD_GETMEM (THREAD_SELF, tid);
+        pid_t id;
+        if (likely(flexsc_enabled())) {
+            id = flexsc_get_current_fid();
+        }
+        else {
+            id = THREAD_GETMEM (THREAD_SELF, tid);
+        }
+
+
+      rwlock->__data.__writer = id;
       result = 0;
     }
 

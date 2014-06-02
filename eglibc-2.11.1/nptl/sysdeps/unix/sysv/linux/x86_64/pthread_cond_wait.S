@@ -134,8 +134,28 @@ __pthread_cond_wait:
 	jne	61f
 
 	movl	$(FUTEX_WAIT_REQUEUE_PI|FUTEX_PRIVATE_FLAG), %esi
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	movl	$1, %r8d
 #ifdef __ASSUME_REQUEUE_PI
@@ -156,8 +176,28 @@ __pthread_cond_wait:
 	orl	%fs:PRIVATE_FUTEX, %esi
 #endif
 60:	xorl	%r8d, %r8d
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 62:	movl	(%rsp), %edi
 	callq	__pthread_disable_asynccancel
@@ -215,8 +255,29 @@ __pthread_cond_wait:
 	cmove	%eax, %esi
 	orl	$FUTEX_WAKE, %esi
 #endif
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+    
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
+
 	subq	$cond_nwaiters, %rdi
 
 17:	LOCK
@@ -413,8 +474,29 @@ __condvar_cleanup1:
 	cmove	%eax, %esi
 	orl	$FUTEX_WAKE, %esi
 #endif
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+    
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
+
 	subq	$cond_nwaiters, %rdi
 	movl	$1, %ecx
 
@@ -451,8 +533,28 @@ __condvar_cleanup1:
 	cmove	%eax, %esi
 	orl	$FUTEX_WAKE, %esi
 #endif
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 5:	movq	16(%rsp), %rdi
 	callq	__pthread_mutex_cond_lock

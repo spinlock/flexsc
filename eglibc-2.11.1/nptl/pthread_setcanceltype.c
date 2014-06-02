@@ -21,12 +21,15 @@
 #include "pthreadP.h"
 #include <atomic.h>
 
+#include <flexsc/assert.h>
 
 int
 __pthread_setcanceltype (type, oldtype)
      int type;
      int *oldtype;
 {
+    flexsc_check_enabled();
+    
   volatile struct pthread *self;
 
   if (type < PTHREAD_CANCEL_DEFERRED || type > PTHREAD_CANCEL_ASYNCHRONOUS)

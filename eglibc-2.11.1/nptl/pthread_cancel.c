@@ -24,11 +24,14 @@
 #include <sysdep.h>
 #include <kernel-features.h>
 
+#include <flexsc/assert.h>
 
 int
 pthread_cancel (th)
      pthread_t th;
 {
+      flexsc_check_enabled();
+      
   volatile struct pthread *pd = (volatile struct pthread *) th;
 
   /* Make sure the descriptor is valid.  */

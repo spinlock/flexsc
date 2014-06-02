@@ -46,12 +46,15 @@
 int *__libc_multiple_threads_ptr attribute_hidden;
 #endif
 
+#include <flexsc/assert.h>
 
 static int
 do_clone (struct pthread *pd, const struct pthread_attr *attr,
 	  int clone_flags, int (*fct) (void *), STACK_VARIABLES_PARMS,
 	  int stopped)
 {
+    flexsc_check_enabled();
+    
 #ifdef PREPARE_CREATE
   PREPARE_CREATE;
 #endif
@@ -144,6 +147,8 @@ static int
 create_thread (struct pthread *pd, const struct pthread_attr *attr,
 	       STACK_VARIABLES_PARMS)
 {
+    flexsc_check_enabled();
+    
 #ifdef TLS_TCB_AT_TP
   assert (pd->header.tcb != NULL);
 #endif

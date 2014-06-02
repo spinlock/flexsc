@@ -20,6 +20,9 @@
 #include <errno.h>
 #include <pthreadP.h>
 
+#include <flexsc/assert.h>
+
+extern unsigned int flexsc_get_current_fid(void);
 
 int
 pthread_mutex_consistent_np (mutex)
@@ -30,7 +33,15 @@ pthread_mutex_consistent_np (mutex)
       || mutex->__data.__owner != PTHREAD_MUTEX_INCONSISTENT)
     return EINVAL;
 
-  mutex->__data.__owner = THREAD_GETMEM (THREAD_SELF, tid);
+  pid_t id;
+  if (likely(flexsc_enabled())) {
+      id = flexsc_get_current_fid();
+  }
+  else {
+      id = THREAD_GETMEM (THREAD_SELF, tid);
+  }
+  mutex->__data.__owner = id;
+  // mutex->__data.__owner = THREAD_GETMEM (THREAD_SELF, tid);
 
   return 0;
 }

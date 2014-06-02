@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <pthreadP.h>
 
+#include <flexsc/assert.h>
 
 int
 pthread_mutex_setprioceiling (mutex, prioceiling, old_ceiling)
@@ -29,6 +30,8 @@ pthread_mutex_setprioceiling (mutex, prioceiling, old_ceiling)
      int prioceiling;
      int *old_ceiling;
 {
+    flexsc_check_enabled();
+    
   /* The low bits of __kind aren't ever changed after pthread_mutex_init,
      so we don't need a lock yet.  */
   if ((mutex->__data.__kind & PTHREAD_MUTEX_PRIO_PROTECT_NP) == 0)

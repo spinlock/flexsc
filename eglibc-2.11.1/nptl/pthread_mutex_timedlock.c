@@ -24,12 +24,15 @@
 #include <lowlevellock.h>
 #include <not-cancel.h>
 
+#include <flexsc/assert.h>
 
 int
 pthread_mutex_timedlock (mutex, abstime)
      pthread_mutex_t *mutex;
      const struct timespec *abstime;
 {
+    flexsc_check_enabled();
+    
   int oldval;
   pid_t id = THREAD_GETMEM (THREAD_SELF, tid);
   int result = 0;

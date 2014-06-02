@@ -90,8 +90,29 @@ __pthread_once:
 	orl	%fs:PRIVATE_FUTEX, %esi
 # endif
 #endif
-	movl	$SYS_futex, %eax
-	syscall
+/*	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
+
 	jmp	6b
 
 	/* Preserve the pointer to the control variable.  */
@@ -123,8 +144,28 @@ __pthread_once:
 	movl	$FUTEX_WAKE, %esi
 	orl	%fs:PRIVATE_FUTEX, %esi
 #endif
-	movl	$SYS_futex, %eax
-	syscall
+/* 	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 4:	addq	$8, %rsp
 	cfi_adjust_cfa_offset(-8)
@@ -155,8 +196,28 @@ clear_once_control:
 	movl	$FUTEX_WAKE, %esi
 	orl	%fs:PRIVATE_FUTEX, %esi
 #endif
-	movl	$SYS_futex, %eax
-	syscall
+/* 	movl	$SYS_futex, %eax */
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	movq	%r8, %rdi
 .LcallUR:

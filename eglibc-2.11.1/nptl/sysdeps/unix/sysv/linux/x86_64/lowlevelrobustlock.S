@@ -54,7 +54,6 @@
 /* For the calculation see asm/vsyscall.h.  */
 #define VSYSCALL_ADDR_vgettimeofday	0xffffffffff600000
 
-
 	.globl	__lll_robust_lock_wait
 	.type	__lll_robust_lock_wait,@function
 	.hidden	__lll_robust_lock_wait
@@ -84,8 +83,29 @@ __lll_robust_lock_wait:
 	cmpxchgl %edx, (%rdi)
 	jnz	2f
 
-1:	movl	$SYS_futex, %eax
-	syscall
+/* 1:	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+1:  
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
 
 	movl	(%rdi), %eax
 
@@ -146,8 +166,30 @@ __lll_robust_timedlock_wait:
 	movq	$0, %rcx	/* Must use mov to avoid changing cc.  */
 	jnz	6f
 
-5:	movl	$SYS_futex, %eax
-	syscall
+/* 5:	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+5:
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
+
 	movl	%eax, %ecx
 
 	movl	(%rdi), %eax
@@ -256,8 +298,29 @@ __lll_robust_timedlock_wait:
 	movl	32(%rsp), %esi
 	LOAD_FUTEX_WAIT (%esi)
 	movq	%r12, %rdi
-	movl	$SYS_futex, %eax
-	syscall
+/* 	movl	$SYS_futex, %eax */
+/* 	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq $SYS_futex, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq $SYS_futex, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
+
 	movq	%rax, %rcx
 
 	movl	(%r12), %eax

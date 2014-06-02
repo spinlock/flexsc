@@ -110,7 +110,28 @@ ENTRY(__pthread_disable_asynccancel)
 	xorq	%r10, %r10
 	addq	$CANCELHANDLING, %rdi
 	LOAD_PRIVATE_FUTEX_WAIT (%esi)
-	syscall
+/*	syscall */
+
+    subq $0x40, %rsp
+    movq %rdi, 0x00(%rsp)
+    movq %rsi, 0x08(%rsp)
+    movq %rdx, 0x10(%rsp)
+    movq %r10, 0x18(%rsp)
+    movq %r8,  0x20(%rsp)
+    movq %r9,  0x28(%rsp)
+    movq %rax, 0x30(%rsp)
+    movq %rsp, %rdi
+    movq %rax, %rsi
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;
+    callq *(%rax)
+    movq 0x00(%rsp), %rdi
+    movq 0x08(%rsp), %rsi
+    movq 0x10(%rsp), %rdx
+    movq 0x18(%rsp), %r10
+    movq 0x20(%rsp), %r8
+    movq 0x28(%rsp), %r9
+    addq $0x40, %rsp
+
 	movl	%fs:CANCELHANDLING, %eax
 	jmp	3b
 END(__pthread_disable_asynccancel)

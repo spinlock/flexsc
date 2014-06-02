@@ -89,7 +89,6 @@ __condvar_cleanup (void *arg)
   __pthread_mutex_cond_lock (cbuffer->mutex);
 }
 
-
 int
 __pthread_cond_wait (cond, mutex)
      pthread_cond_t *cond;

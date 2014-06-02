@@ -37,44 +37,44 @@ typedef struct { int lock; int cnt; void *owner; } _IO_lock_t;
 #define _IO_lock_fini(_name) \
   ((void) 0)
 
-#define _IO_lock_lock(_name) \
-  do {									      \
-    void *__self = THREAD_SELF;						      \
-    if ((_name).owner != __self)					      \
-      {									      \
-	lll_lock ((_name).lock, LLL_PRIVATE);				      \
-        (_name).owner = __self;						      \
-      }									      \
-    ++(_name).cnt;							      \
-  } while (0)
+#define _IO_lock_lock(_name)                                        \
+    do {                                                            \
+        struct pthread *__pd = THREAD_SELF;                         \
+        void *__self = THREAD_GETMEM(__pd, flexsc_owner);           \
+        if ((_name).owner != __self) {                              \
+            lll_lock ((_name).lock, LLL_PRIVATE);                   \
+            (_name).owner = __self;                                 \
+        }                                                           \
+        ++(_name).cnt;                                              \
+    } while (0)
 
-#define _IO_lock_trylock(_name) \
-  ({									      \
-    int __result = 0;							      \
-    void *__self = THREAD_SELF;						      \
-    if ((_name).owner != __self)					      \
-      {									      \
-        if (lll_trylock ((_name).lock) == 0)				      \
-          {								      \
-            (_name).owner = __self;					      \
-            (_name).cnt = 1;						      \
-          }								      \
-        else								      \
-          __result = EBUSY;						      \
-      }									      \
-    else								      \
-      ++(_name).cnt;							      \
-    __result;								      \
+#define _IO_lock_trylock(_name)                                     \
+    ({                                                              \
+        int __result = 0;                                           \
+        struct pthread *__pd = THREAD_SELF;                         \
+        void *__self = THREAD_GETMEM(__pd, flexsc_owner);           \
+        if ((_name).owner != __self) {                              \
+            if (lll_trylock ((_name).lock) == 0) {                  \
+                (_name).owner = __self;                             \
+                (_name).cnt = 1;                                    \
+            }                                                       \
+            else {                                                  \
+                __result = EBUSY;                                   \
+            }                                                       \
+        }                                                           \
+        else {                                                      \
+            ++(_name).cnt;                                          \
+        }                                                           \
+        __result;                                                   \
   })
 
-#define _IO_lock_unlock(_name) \
-  do {									      \
-    if (--(_name).cnt == 0)						      \
-      {									      \
-        (_name).owner = NULL;						      \
-	lll_unlock ((_name).lock, LLL_PRIVATE);				      \
-      }									      \
-  } while (0)
+#define _IO_lock_unlock(_name)                      \
+    do {                                            \
+        if (--(_name).cnt == 0) {                   \
+            (_name).owner = NULL;                   \
+            lll_unlock ((_name).lock, LLL_PRIVATE); \
+        }                                           \
+    } while (0)
 
 
 

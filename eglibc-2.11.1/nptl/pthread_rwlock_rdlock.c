@@ -23,6 +23,9 @@
 #include <pthread.h>
 #include <pthreadP.h>
 
+#include <flexsc/assert.h>
+
+extern unsigned int flexsc_get_current_fid(void);
 
 /* Acquire read lock for RWLOCK.  */
 int
@@ -55,8 +58,15 @@ __pthread_rwlock_rdlock (rwlock)
 
       /* Make sure we are not holding the rwlock as a writer.  This is
 	 a deadlock situation we recognize and report.  */
+    pid_t id;
+    if (likely(flexsc_enabled())) {
+        id = flexsc_get_current_fid();
+    }
+    else {
+        id = THREAD_GETMEM (THREAD_SELF, tid);
+    }
       if (__builtin_expect (rwlock->__data.__writer
-			    == THREAD_GETMEM (THREAD_SELF, tid), 0))
+			    == id, 0))
 	{
 	  result = EDEADLK;
 	  break;

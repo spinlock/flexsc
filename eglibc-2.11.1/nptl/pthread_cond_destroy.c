@@ -21,7 +21,6 @@
 #include <shlib-compat.h>
 #include "pthreadP.h"
 
-
 int
 __pthread_cond_destroy (cond)
      pthread_cond_t *cond;

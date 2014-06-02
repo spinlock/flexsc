@@ -1,0 +1,10 @@
+path=../nptl/
+
+all: $(path)flexsc_init.l.c $(path)flexsc_init.y.c
+
+$(path)flexsc_init.l.c: __flexsc_init.l $(path)flexsc_init.y.c
+	@flex -o $(path)flexsc_init.l.c __flexsc_init.l
+
+$(path)flexsc_init.y.c: __flexsc_init.y
+	@yacc -d -o $(path)flexsc_init.y.c __flexsc_init.y
+

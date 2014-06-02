@@ -22,6 +22,7 @@
 #include <atomic.h>
 #include "pthreadP.h"
 
+#include <flexsc/assert.h>
 
 static void
 cleanup (void *arg)
@@ -36,6 +37,8 @@ pthread_timedjoin_np (threadid, thread_return, abstime)
      void **thread_return;
      const struct timespec *abstime;
 {
+    flexsc_check_enabled();
+    
   struct pthread *self;
   struct pthread *pd = (struct pthread *) threadid;
   int result;

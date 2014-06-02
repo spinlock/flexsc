@@ -26,6 +26,7 @@
 #include <sysdep.h>
 #include <kernel-features.h>
 
+#include <flexsc/assert.h>
 
 int
 pthread_sigqueue (threadid, signo, value)
@@ -33,6 +34,8 @@ pthread_sigqueue (threadid, signo, value)
      int signo;
      const union sigval value;
 {
+    flexsc_check_enabled();
+    
 #ifdef __NR_rt_tgsigqueueinfo
   struct pthread *pd = (struct pthread *) threadid;
 

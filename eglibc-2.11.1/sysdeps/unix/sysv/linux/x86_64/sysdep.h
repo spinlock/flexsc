@@ -205,10 +205,24 @@
     Syscalls of more than 6 arguments are not supported.  */
 
 # undef	DO_CALL
-# define DO_CALL(syscall_name, args)		\
-    DOARGS_##args				\
-    movl $SYS_ify (syscall_name), %eax;		\
-    syscall;
+/* # define DO_CALL(syscall_name, args)		\ */
+/*     DOARGS_##args				\ */
+/*     movl $SYS_ify (syscall_name), %eax;		\ */
+/*     syscall; */
+# define DO_CALL(syscall_name, args)                    \
+    subq $0x40, %rsp;                                   \
+    movq %rdi, 0x00(%rsp);                              \
+    movq %rsi, 0x08(%rsp);                              \
+    movq %rdx, 0x10(%rsp);                              \
+    movq %rcx, 0x18(%rsp);                              \
+    movq %r8,  0x20(%rsp);                              \
+    movq %r9,  0x28(%rsp);                              \
+    movq $SYS_ify (syscall_name), 0x30(%rsp);           \
+    movq %rsp, %rdi;                                    \
+    movq $SYS_ify (syscall_name), %rsi;                 \
+    movq __flexsc_syscall_handle@GOTPCREL(%rip), %rax;  \
+    callq *(%rax);                                      \
+    addq $0x40, %rsp;
 
 # define DOARGS_0 /* nothing */
 # define DOARGS_1 /* nothing */
@@ -235,16 +249,48 @@
 # undef INTERNAL_SYSCALL_DECL
 # define INTERNAL_SYSCALL_DECL(err) do { } while (0)
 
-# define INTERNAL_SYSCALL_NCS(name, err, nr, args...) \
-  ({									      \
-    unsigned long int resultvar;					      \
-    LOAD_ARGS_##nr (args)						      \
-    LOAD_REGS_##nr							      \
-    asm volatile (							      \
-    "syscall\n\t"							      \
-    : "=a" (resultvar)							      \
-    : "0" (name) ASM_ARGS_##nr : "memory", "cc", "r11", "cx");		      \
-    (long int) resultvar; })
+/* # define INTERNAL_SYSCALL_NCS(name, err, nr, args...)                   \ */
+/*     ({                                                                  \ */
+/*         unsigned long int resultvar;                                    \ */
+/*         LOAD_ARGS_##nr (args)                                           \ */
+/*             LOAD_REGS_##nr                                              \ */
+/*             asm volatile (                                              \ */
+/*                 "syscall\n\t"                                           \ */
+/*                 : "=a" (resultvar)                                      \ */
+/*                 : "0" (name) ASM_ARGS_##nr : "memory", "cc", "r11", "cx"); \ */
+/*         (long int) resultvar; }) */
+
+#ifndef __FLEXSC_LOAD_X
+#define __FLEXSC_LOAD_X
+#  define __FLEXSC_LOAD_ARGS_0()
+#  define __FLEXSC_LOAD_ARGS_1(a0)              \
+    __FLEXSC_LOAD_ARGS_0();                     \
+    __sysargs[0] = (long)(a0);
+#  define __FLEXSC_LOAD_ARGS_2(a0, a1)          \
+    __FLEXSC_LOAD_ARGS_1(a0);                   \
+    __sysargs[1] = (long)(a1);
+#  define __FLEXSC_LOAD_ARGS_3(a0, a1, a2)      \
+    __FLEXSC_LOAD_ARGS_2(a0, a1);               \
+    __sysargs[2] = (long)(a2);
+#  define __FLEXSC_LOAD_ARGS_4(a0, a1, a2, a3)  \
+    __FLEXSC_LOAD_ARGS_3(a0, a1, a2);           \
+    __sysargs[3] = (long)(a3);
+#  define __FLEXSC_LOAD_ARGS_5(a0, a1, a2, a3, a4)  \
+    __FLEXSC_LOAD_ARGS_4(a0, a1, a2, a3);           \
+    __sysargs[4] = (long)(a4);
+#  define __FLEXSC_LOAD_ARGS_6(a0, a1, a2, a3, a4, a5)  \
+    __FLEXSC_LOAD_ARGS_5(a0, a1, a2, a3, a4);           \
+    __sysargs[5] = (long)(a5);
+#endif /* !__FLEXSC_LOAD_X */
+
+#define INTERNAL_SYSCALL_NCS(name, err, nr, args...) ({                                     \
+            extern long (*__flexsc_syscall_handle)(long sysargs[], unsigned int sysnum);    \
+            long __sysargs[8];                                                              \
+            __FLEXSC_LOAD_ARGS_##nr(args);                                                  \
+            __sysargs[6] = (unsigned int)(name);                                            \
+            __flexsc_syscall_handle(__sysargs, name);                                       \
+        })
+
 # undef INTERNAL_SYSCALL
 # define INTERNAL_SYSCALL(name, err, nr, args...) \
   INTERNAL_SYSCALL_NCS (__NR_##name, err, nr, ##args)

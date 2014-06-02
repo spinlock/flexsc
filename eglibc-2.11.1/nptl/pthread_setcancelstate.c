@@ -21,12 +21,15 @@
 #include "pthreadP.h"
 #include <atomic.h>
 
+#include <flexsc/assert.h>
 
 int
 __pthread_setcancelstate (state, oldstate)
      int state;
      int *oldstate;
 {
+    flexsc_check_enabled();
+    
   volatile struct pthread *self;
 
   if (state < PTHREAD_CANCEL_ENABLE || state > PTHREAD_CANCEL_DISABLE)

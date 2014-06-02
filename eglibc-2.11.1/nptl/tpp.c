@@ -25,6 +25,7 @@
 #include <sched.h>
 #include <stdlib.h>
 
+#include <flexsc/assert.h>
 
 int __sched_fifo_min_prio = -1;
 int __sched_fifo_max_prio = -1;
@@ -40,6 +41,8 @@ __init_sched_fifo_prio (void)
 int
 __pthread_tpp_change_priority (int previous_prio, int new_prio)
 {
+    flexsc_check_enabled();
+    
   struct pthread *self = THREAD_SELF;
   struct priority_protection_data *tpp = THREAD_GETMEM (self, tpp);
 
@@ -137,6 +140,8 @@ __pthread_tpp_change_priority (int previous_prio, int new_prio)
 int
 __pthread_current_priority (void)
 {
+    flexsc_check_enabled();
+    
   struct pthread *self = THREAD_SELF;
   if ((self->flags & (ATTR_FLAG_POLICY_SET | ATTR_FLAG_SCHED_SET))
       == (ATTR_FLAG_POLICY_SET | ATTR_FLAG_SCHED_SET))

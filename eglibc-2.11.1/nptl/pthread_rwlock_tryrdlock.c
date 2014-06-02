@@ -21,7 +21,6 @@
 #include "pthreadP.h"
 #include <lowlevellock.h>
 
-
 int
 __pthread_rwlock_tryrdlock (rwlock)
      pthread_rwlock_t *rwlock;
