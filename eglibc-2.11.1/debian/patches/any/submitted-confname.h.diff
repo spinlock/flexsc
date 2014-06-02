@@ -1,0 +1,17 @@
+2009-10-29  Aurelien Jarno <aurelien@aurel32.net>
+
+	* sysdeps/x86_64/multiarch/Makefile: remove comma at end of
+	enumerator list.
+
+--- a/bits/confname.h
++++ b/bits/confname.h
+@@ -527,7 +527,7 @@ enum
+ 
+     _SC_THREAD_ROBUST_PRIO_INHERIT,
+ #define _SC_THREAD_ROBUST_PRIO_INHERIT	_SC_THREAD_ROBUST_PRIO_INHERIT
+-    _SC_THREAD_ROBUST_PRIO_PROTECT,
++    _SC_THREAD_ROBUST_PRIO_PROTECT
+ #define _SC_THREAD_ROBUST_PRIO_PROTECT	_SC_THREAD_ROBUST_PRIO_PROTECT
+   };
+ 
+

@@ -1,0 +1,5884 @@
+2010-02-26  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* sysdeps/i386/i686/multiarch/Makefile (sysdep_routines): Add
+	strcmp-ssse3 strcmp-sse4 strncmp-c strncmp-ssse3 strncmp-sse4
+	memcmp-ssse3 memcmp-sse4.
+
+	* sysdeps/i386/i686/multiarch/memcmp-sse4.S: New.
+	* sysdeps/i386/i686/multiarch/memcmp-ssse3.S: Likewise.
+	* sysdeps/i386/i686/multiarch/memcmp.S: Likewise.
+	* sysdeps/i386/i686/multiarch/strcmp-sse4.S: Likewise.
+	* sysdeps/i386/i686/multiarch/strcmp-ssse3.S: Likewise.
+	* sysdeps/i386/i686/multiarch/strcmp.S: Likewise.
+	* sysdeps/i386/i686/multiarch/strncmp-c.c: Likewise.
+	* sysdeps/i386/i686/multiarch/strncmp-sse4.S: Likewise.
+	* sysdeps/i386/i686/multiarch/strncmp-ssse3.S: Likewise.
+	* sysdeps/i386/i686/multiarch/strncmp.S: Likewise.
+
+diff --git a/sysdeps/i386/i686/multiarch/Makefile b/sysdeps/i386/i686/multiarch/Makefile
+index fbad9ae..e8847d6 100644
+--- a/sysdeps/i386/i686/multiarch/Makefile
++++ b/sysdeps/i386/i686/multiarch/Makefile
+@@ -7,7 +7,9 @@ ifeq ($(subdir),string)
+ sysdep_routines += bzero-sse2 memset-sse2 memcpy-ssse3 mempcpy-ssse3 \
+ 		   memmove-ssse3 memcpy-ssse3-rep mempcpy-ssse3-rep \
+ 		   memmove-ssse3-rep bcopy-ssse3 bcopy-ssse3-rep \
+-		   memset-sse2-rep bzero-sse2-rep
++		   memset-sse2-rep bzero-sse2-rep strcmp-ssse3 \
++		   strcmp-sse4 strncmp-c strncmp-ssse3 strncmp-sse4 \
++		   memcmp-ssse3 memcmp-sse4
+ ifeq (yes,$(config-cflags-sse4))
+ sysdep_routines += strcspn-c strpbrk-c strspn-c strstr-c strcasestr-c
+ CFLAGS-strcspn-c.c += -msse4
+diff --git a/sysdeps/i386/i686/multiarch/memcmp-sse4.S b/sysdeps/i386/i686/multiarch/memcmp-sse4.S
+new file mode 100644
+index 0000000..b1ed778
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/memcmp-sse4.S
+@@ -0,0 +1,1004 @@
++/* memcmp with SSE4.2
++   Copyright (C) 2010 Free Software Foundation, Inc.
++   Contributed by Intel Corporation.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef NOT_IN_libc
++
++#include <sysdep.h>
++#include "asm-syntax.h"
++
++#ifndef MEMCMP
++# define MEMCMP		__memcmp_sse4_2
++#endif
++
++#define CFI_PUSH(REG)						\
++  cfi_adjust_cfa_offset (4);					\
++  cfi_rel_offset (REG, 0)
++
++#define CFI_POP(REG)						\
++  cfi_adjust_cfa_offset (-4);					\
++  cfi_restore (REG)
++
++#define PUSH(REG)	pushl REG; CFI_PUSH (REG)
++#define POP(REG)	popl REG; CFI_POP (REG)
++
++#define PARMS		4
++#define BLK1		PARMS
++#define BLK2		BLK1+4
++#define LEN		BLK2+4
++#define RETURN		POP (%ebx); ret; CFI_PUSH (%ebx)
++
++
++#ifdef SHARED
++# define JMPTBL(I, B)	I - B
++
++/* Load an entry in a jump table into EBX and branch to it.  TABLE is a
++   jump table with relative offsets.  INDEX is a register contains the
++   index into the jump table.   SCALE is the scale of INDEX. */
++# define BRANCH_TO_JMPTBL_ENTRY(TABLE, INDEX, SCALE)		\
++    /* We first load PC into EBX.  */				\
++    call	__i686.get_pc_thunk.bx;				\
++    /* Get the address of the jump table.  */			\
++    addl	$(TABLE - .), %ebx;				\
++    /* Get the entry and convert the relative offset to the	\
++       absolute address.  */					\
++    addl	(%ebx,INDEX,SCALE), %ebx;			\
++    /* We loaded the jump table and adjuested EDX/ESI. Go.  */	\
++    jmp		*%ebx
++
++	.section	.gnu.linkonce.t.__i686.get_pc_thunk.bx,"ax",@progbits
++	.globl	__i686.get_pc_thunk.bx
++	.hidden	__i686.get_pc_thunk.bx
++	ALIGN (4)
++	.type	__i686.get_pc_thunk.bx,@function
++__i686.get_pc_thunk.bx:
++	movl	(%esp), %ebx
++	ret
++#else
++# define JMPTBL(I, B)	I
++
++/* Load an entry in a jump table into EBX and branch to it.  TABLE is a
++   jump table with relative offsets.  INDEX is a register contains the
++   index into the jump table.   SCALE is the scale of INDEX. */
++# define BRANCH_TO_JMPTBL_ENTRY(TABLE, INDEX, SCALE)		\
++    jmp		*TABLE(,INDEX,SCALE)
++#endif
++
++	.section .text.sse4.2,"ax",@progbits
++ENTRY (MEMCMP)
++	movl	BLK1(%esp), %eax
++	movl	BLK2(%esp), %edx
++	movl	LEN(%esp), %ecx
++	cmp	$1, %ecx
++	jbe	L(less1bytes)
++	pxor	%xmm0, %xmm0
++	cmp	$64, %ecx
++	ja	L(64bytesormore)
++	cmp	$8, %ecx
++	PUSH (%ebx)
++	jb	L(less8bytes)
++	add	%ecx, %edx
++	add	%ecx, %eax
++	BRANCH_TO_JMPTBL_ENTRY(L(table_64bytes), %ecx, 4)
++
++	ALIGN (4)
++L(less8bytes):
++	mov	(%eax), %bl
++	cmpb	(%edx), %bl
++	jne	L(nonzero)
++
++	mov	1(%eax), %bl
++	cmpb	1(%edx), %bl
++	jne	L(nonzero)
++
++	cmp	$2, %ecx
++	jz	L(0bytes)
++
++	mov	2(%eax), %bl
++	cmpb	2(%edx), %bl
++	jne	L(nonzero)
++
++	cmp	$3, %ecx
++	jz	L(0bytes)
++
++	mov	3(%eax), %bl
++	cmpb	3(%edx), %bl
++	jne	L(nonzero)
++
++	cmp	$4, %ecx
++	jz	L(0bytes)
++
++	mov	4(%eax), %bl
++	cmpb	4(%edx), %bl
++	jne	L(nonzero)
++
++	cmp	$5, %ecx
++	jz	L(0bytes)
++
++	mov	5(%eax), %bl
++	cmpb	5(%edx), %bl
++	jne	L(nonzero)
++
++	cmp	$6, %ecx
++	jz	L(0bytes)
++
++	mov	6(%eax), %bl
++	cmpb	6(%edx), %bl
++	je	L(0bytes)
++L(nonzero):
++	POP (%ebx)
++	mov	$1, %eax
++	ja	L(above)
++	neg	%eax
++L(above):
++	ret
++	CFI_PUSH (%ebx)
++
++	ALIGN (4)
++L(0bytes):
++	POP (%ebx)
++	xor	%eax, %eax
++	ret
++
++	ALIGN (4)
++L(less1bytes):
++	jb	L(0bytesend)
++	movzbl	(%eax), %eax
++	movzbl	(%edx), %edx
++	sub	%edx, %eax
++	ret
++
++	ALIGN (4)
++L(0bytesend):
++	xor	%eax, %eax
++	ret
++
++	ALIGN (4)
++L(64bytesormore):
++	PUSH (%ebx)
++	mov	%ecx, %ebx
++	mov	$64, %ecx
++	sub	$64, %ebx
++L(64bytesormore_loop):
++	movdqu	(%eax), %xmm1
++	movdqu	(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(find_16diff)
++
++	movdqu	16(%eax), %xmm1
++	movdqu	16(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(find_32diff)
++
++	movdqu	32(%eax), %xmm1
++	movdqu	32(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(find_48diff)
++
++	movdqu	48(%eax), %xmm1
++	movdqu	48(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(find_64diff)
++	add	%ecx, %eax
++	add	%ecx, %edx
++	sub	%ecx, %ebx
++	jae	L(64bytesormore_loop)
++	add	%ebx, %ecx
++	add	%ecx, %edx
++	add	%ecx, %eax
++	BRANCH_TO_JMPTBL_ENTRY(L(table_64bytes), %ecx, 4)
++
++	ALIGN (4)
++L(find_16diff):
++	sub	$16, %ecx
++L(find_32diff):
++	sub	$16, %ecx
++L(find_48diff):
++	sub	$16, %ecx
++L(find_64diff):
++	add	%ecx, %edx
++	add	%ecx, %eax
++	jmp	L(16bytes)
++
++	ALIGN (4)
++L(16bytes):
++	mov	-16(%eax), %ecx
++	mov	-16(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(12bytes):
++	mov	-12(%eax), %ecx
++	mov	-12(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(8bytes):
++	mov	-8(%eax), %ecx
++	mov	-8(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(4bytes):
++	mov	-4(%eax), %ecx
++	mov	-4(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	RETURN
++
++	ALIGN (4)
++L(49bytes):
++	movdqu	-49(%eax), %xmm1
++	movdqu	-49(%edx), %xmm2
++	mov	$-49, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(33bytes):
++	movdqu	-33(%eax), %xmm1
++	movdqu	-33(%edx), %xmm2
++	mov	$-33, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(17bytes):
++	mov	-17(%eax), %ecx
++	mov	-17(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(13bytes):
++	mov	-13(%eax), %ecx
++	mov	-13(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(9bytes):
++	mov	-9(%eax), %ecx
++	mov	-9(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(5bytes):
++	mov	-5(%eax), %ecx
++	mov	-5(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzbl	-1(%eax), %ecx
++	cmp	-1(%edx), %cl
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(50bytes):
++	mov	$-50, %ebx
++	movdqu	-50(%eax), %xmm1
++	movdqu	-50(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(34bytes):
++	mov	$-34, %ebx
++	movdqu	-34(%eax), %xmm1
++	movdqu	-34(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(18bytes):
++	mov	-18(%eax), %ecx
++	mov	-18(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(14bytes):
++	mov	-14(%eax), %ecx
++	mov	-14(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(10bytes):
++	mov	-10(%eax), %ecx
++	mov	-10(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(6bytes):
++	mov	-6(%eax), %ecx
++	mov	-6(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(2bytes):
++	movzwl	-2(%eax), %ecx
++	movzwl	-2(%edx), %ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bh, %ch
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(51bytes):
++	mov	$-51, %ebx
++	movdqu	-51(%eax), %xmm1
++	movdqu	-51(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(35bytes):
++	mov	$-35, %ebx
++	movdqu	-35(%eax), %xmm1
++	movdqu	-35(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(19bytes):
++	movl	-19(%eax), %ecx
++	movl	-19(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(15bytes):
++	movl	-15(%eax), %ecx
++	movl	-15(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(11bytes):
++	movl	-11(%eax), %ecx
++	movl	-11(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(7bytes):
++	movl	-7(%eax), %ecx
++	movl	-7(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(3bytes):
++	movzwl	-3(%eax), %ecx
++	movzwl	-3(%edx), %ebx
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++L(1bytes):
++	movzbl	-1(%eax), %eax
++	cmpb	-1(%edx), %al
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(52bytes):
++	movdqu	-52(%eax), %xmm1
++	movdqu	-52(%edx), %xmm2
++	mov	$-52, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(36bytes):
++	movdqu	-36(%eax), %xmm1
++	movdqu	-36(%edx), %xmm2
++	mov	$-36, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(20bytes):
++	movdqu	-20(%eax), %xmm1
++	movdqu	-20(%edx), %xmm2
++	mov	$-20, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	mov	-4(%eax), %ecx
++	mov	-4(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	RETURN
++
++	ALIGN (4)
++L(53bytes):
++	movdqu	-53(%eax), %xmm1
++	movdqu	-53(%edx), %xmm2
++	mov	$-53, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(37bytes):
++	mov	$-37, %ebx
++	movdqu	-37(%eax), %xmm1
++	movdqu	-37(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(21bytes):
++	mov	$-21, %ebx
++	movdqu	-21(%eax), %xmm1
++	movdqu	-21(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	mov	-5(%eax), %ecx
++	mov	-5(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzbl	-1(%eax), %ecx
++	cmp	-1(%edx), %cl
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(54bytes):
++	movdqu	-54(%eax), %xmm1
++	movdqu	-54(%edx), %xmm2
++	mov	$-54, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(38bytes):
++	mov	$-38, %ebx
++	movdqu	-38(%eax), %xmm1
++	movdqu	-38(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(22bytes):
++	mov	$-22, %ebx
++	movdqu	-22(%eax), %xmm1
++	movdqu	-22(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++	mov	-6(%eax), %ecx
++	mov	-6(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzwl	-2(%eax), %ecx
++	movzwl	-2(%edx), %ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bh, %ch
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(55bytes):
++	movdqu	-55(%eax), %xmm1
++	movdqu	-55(%edx), %xmm2
++	mov	$-55, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(39bytes):
++	mov	$-39, %ebx
++	movdqu	-39(%eax), %xmm1
++	movdqu	-39(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(23bytes):
++	mov	$-23, %ebx
++	movdqu	-23(%eax), %xmm1
++	movdqu	-23(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	movl	-7(%eax), %ecx
++	movl	-7(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzwl	-3(%eax), %ecx
++	movzwl	-3(%edx), %ebx
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++	movzbl	-1(%eax), %eax
++	cmpb	-1(%edx), %al
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(56bytes):
++	movdqu	-56(%eax), %xmm1
++	movdqu	-56(%edx), %xmm2
++	mov	$-56, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(40bytes):
++	mov	$-40, %ebx
++	movdqu	-40(%eax), %xmm1
++	movdqu	-40(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(24bytes):
++	mov	$-24, %ebx
++	movdqu	-24(%eax), %xmm1
++	movdqu	-24(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++	mov	-8(%eax), %ecx
++	mov	-8(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-4(%eax), %ecx
++	mov	-4(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	RETURN
++
++	ALIGN (4)
++L(57bytes):
++	movdqu	-57(%eax), %xmm1
++	movdqu	-57(%edx), %xmm2
++	mov	$-57, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(41bytes):
++	mov	$-41, %ebx
++	movdqu	-41(%eax), %xmm1
++	movdqu	-41(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(25bytes):
++	mov	$-25, %ebx
++	movdqu	-25(%eax), %xmm1
++	movdqu	-25(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	mov	-9(%eax), %ecx
++	mov	-9(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	mov	-5(%eax), %ecx
++	mov	-5(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzbl	-1(%eax), %ecx
++	cmp	-1(%edx), %cl
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(58bytes):
++	movdqu	-58(%eax), %xmm1
++	movdqu	-58(%edx), %xmm2
++	mov	$-58, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(42bytes):
++	mov	$-42, %ebx
++	movdqu	-42(%eax), %xmm1
++	movdqu	-42(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(26bytes):
++	mov	$-26, %ebx
++	movdqu	-26(%eax), %xmm1
++	movdqu	-26(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++	mov	-10(%eax), %ecx
++	mov	-10(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-6(%eax), %ecx
++	mov	-6(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	movzwl	-2(%eax), %ecx
++	movzwl	-2(%edx), %ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bh, %ch
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(59bytes):
++	movdqu	-59(%eax), %xmm1
++	movdqu	-59(%edx), %xmm2
++	mov	$-59, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(43bytes):
++	mov	$-43, %ebx
++	movdqu	-43(%eax), %xmm1
++	movdqu	-43(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(27bytes):
++	mov	$-27, %ebx
++	movdqu	-27(%eax), %xmm1
++	movdqu	-27(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	movl	-11(%eax), %ecx
++	movl	-11(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movl	-7(%eax), %ecx
++	movl	-7(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzwl	-3(%eax), %ecx
++	movzwl	-3(%edx), %ebx
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++	movzbl	-1(%eax), %eax
++	cmpb	-1(%edx), %al
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(60bytes):
++	movdqu	-60(%eax), %xmm1
++	movdqu	-60(%edx), %xmm2
++	mov	$-60, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(44bytes):
++	mov	$-44, %ebx
++	movdqu	-44(%eax), %xmm1
++	movdqu	-44(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(28bytes):
++	mov	$-28, %ebx
++	movdqu	-28(%eax), %xmm1
++	movdqu	-28(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	mov	-12(%eax), %ecx
++	mov	-12(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	mov	-8(%eax), %ecx
++	mov	-8(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	mov	-4(%eax), %ecx
++	mov	-4(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	RETURN
++
++	ALIGN (4)
++L(61bytes):
++	movdqu	-61(%eax), %xmm1
++	movdqu	-61(%edx), %xmm2
++	mov	$-61, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(45bytes):
++	mov	$-45, %ebx
++	movdqu	-45(%eax), %xmm1
++	movdqu	-45(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(29bytes):
++	mov	$-29, %ebx
++	movdqu	-29(%eax), %xmm1
++	movdqu	-29(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++	mov	-13(%eax), %ecx
++	mov	-13(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-9(%eax), %ecx
++	mov	-9(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-5(%eax), %ecx
++	mov	-5(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzbl	-1(%eax), %ecx
++	cmp	-1(%edx), %cl
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(62bytes):
++	movdqu	-62(%eax), %xmm1
++	movdqu	-62(%edx), %xmm2
++	mov	$-62, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(46bytes):
++	mov	$-46, %ebx
++	movdqu	-46(%eax), %xmm1
++	movdqu	-46(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(30bytes):
++	mov	$-30, %ebx
++	movdqu	-30(%eax), %xmm1
++	movdqu	-30(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++	mov	-14(%eax), %ecx
++	mov	-14(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	mov	-10(%eax), %ecx
++	mov	-10(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	mov	-6(%eax), %ecx
++	mov	-6(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzwl	-2(%eax), %ecx
++	movzwl	-2(%edx), %ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bh, %ch
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(63bytes):
++	movdqu	-63(%eax), %xmm1
++	movdqu	-63(%edx), %xmm2
++	mov	$-63, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(47bytes):
++	mov	$-47, %ebx
++	movdqu	-47(%eax), %xmm1
++	movdqu	-47(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(31bytes):
++	mov	$-31, %ebx
++	movdqu	-31(%eax), %xmm1
++	movdqu	-31(%edx), %xmm2
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++	movl	-15(%eax), %ecx
++	movl	-15(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movl	-11(%eax), %ecx
++	movl	-11(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movl	-7(%eax), %ecx
++	movl	-7(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzwl	-3(%eax), %ecx
++	movzwl	-3(%edx), %ebx
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++	movzbl	-1(%eax), %eax
++	cmpb	-1(%edx), %al
++	mov	$0, %eax
++	jne	L(end)
++	RETURN
++
++	ALIGN (4)
++L(64bytes):
++	movdqu	-64(%eax), %xmm1
++	movdqu	-64(%edx), %xmm2
++	mov	$-64, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(48bytes):
++	movdqu	-48(%eax), %xmm1
++	movdqu	-48(%edx), %xmm2
++	mov	$-48, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++L(32bytes):
++	movdqu	-32(%eax), %xmm1
++	movdqu	-32(%edx), %xmm2
++	mov	$-32, %ebx
++	pxor	%xmm1, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++	mov	-16(%eax), %ecx
++	mov	-16(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-12(%eax), %ecx
++	mov	-12(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-8(%eax), %ecx
++	mov	-8(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	-4(%eax), %ecx
++	mov	-4(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	RETURN
++
++	ALIGN (4)
++L(less16bytes):
++	add	%ebx, %eax
++	add	%ebx, %edx
++
++	mov	(%eax), %ecx
++	mov	(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	4(%eax), %ecx
++	mov	4(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	8(%eax), %ecx
++	mov	8(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++
++	mov	12(%eax), %ecx
++	mov	12(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	RETURN
++
++	ALIGN (4)
++L(find_diff):
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++	shr	$16,%ecx
++	shr	$16,%ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++L(end):
++	POP (%ebx)
++	mov	$1, %eax
++	ja	L(bigger)
++	neg	%eax
++L(bigger):
++	ret
++END (MEMCMP)
++
++	.section .rodata.sse4.2,"a",@progbits
++	ALIGN (2)
++	.type	L(table_64bytes), @object
++L(table_64bytes):
++	.int	JMPTBL (L(0bytes), L(table_64bytes))
++	.int	JMPTBL (L(1bytes), L(table_64bytes))
++	.int	JMPTBL (L(2bytes), L(table_64bytes))
++	.int	JMPTBL (L(3bytes), L(table_64bytes))
++	.int	JMPTBL (L(4bytes), L(table_64bytes))
++	.int	JMPTBL (L(5bytes), L(table_64bytes))
++	.int	JMPTBL (L(6bytes), L(table_64bytes))
++	.int	JMPTBL (L(7bytes), L(table_64bytes))
++	.int	JMPTBL (L(8bytes), L(table_64bytes))
++	.int	JMPTBL (L(9bytes), L(table_64bytes))
++	.int	JMPTBL (L(10bytes), L(table_64bytes))
++	.int	JMPTBL (L(11bytes), L(table_64bytes))
++	.int	JMPTBL (L(12bytes), L(table_64bytes))
++	.int	JMPTBL (L(13bytes), L(table_64bytes))
++	.int	JMPTBL (L(14bytes), L(table_64bytes))
++	.int	JMPTBL (L(15bytes), L(table_64bytes))
++	.int	JMPTBL (L(16bytes), L(table_64bytes))
++	.int	JMPTBL (L(17bytes), L(table_64bytes))
++	.int	JMPTBL (L(18bytes), L(table_64bytes))
++	.int	JMPTBL (L(19bytes), L(table_64bytes))
++	.int	JMPTBL (L(20bytes), L(table_64bytes))
++	.int	JMPTBL (L(21bytes), L(table_64bytes))
++	.int	JMPTBL (L(22bytes), L(table_64bytes))
++	.int	JMPTBL (L(23bytes), L(table_64bytes))
++	.int	JMPTBL (L(24bytes), L(table_64bytes))
++	.int	JMPTBL (L(25bytes), L(table_64bytes))
++	.int	JMPTBL (L(26bytes), L(table_64bytes))
++	.int	JMPTBL (L(27bytes), L(table_64bytes))
++	.int	JMPTBL (L(28bytes), L(table_64bytes))
++	.int	JMPTBL (L(29bytes), L(table_64bytes))
++	.int	JMPTBL (L(30bytes), L(table_64bytes))
++	.int	JMPTBL (L(31bytes), L(table_64bytes))
++	.int	JMPTBL (L(32bytes), L(table_64bytes))
++	.int	JMPTBL (L(33bytes), L(table_64bytes))
++	.int	JMPTBL (L(34bytes), L(table_64bytes))
++	.int	JMPTBL (L(35bytes), L(table_64bytes))
++	.int	JMPTBL (L(36bytes), L(table_64bytes))
++	.int	JMPTBL (L(37bytes), L(table_64bytes))
++	.int	JMPTBL (L(38bytes), L(table_64bytes))
++	.int	JMPTBL (L(39bytes), L(table_64bytes))
++	.int	JMPTBL (L(40bytes), L(table_64bytes))
++	.int	JMPTBL (L(41bytes), L(table_64bytes))
++	.int	JMPTBL (L(42bytes), L(table_64bytes))
++	.int	JMPTBL (L(43bytes), L(table_64bytes))
++	.int	JMPTBL (L(44bytes), L(table_64bytes))
++	.int	JMPTBL (L(45bytes), L(table_64bytes))
++	.int	JMPTBL (L(46bytes), L(table_64bytes))
++	.int	JMPTBL (L(47bytes), L(table_64bytes))
++	.int	JMPTBL (L(48bytes), L(table_64bytes))
++	.int	JMPTBL (L(49bytes), L(table_64bytes))
++	.int	JMPTBL (L(50bytes), L(table_64bytes))
++	.int	JMPTBL (L(51bytes), L(table_64bytes))
++	.int	JMPTBL (L(52bytes), L(table_64bytes))
++	.int	JMPTBL (L(53bytes), L(table_64bytes))
++	.int	JMPTBL (L(54bytes), L(table_64bytes))
++	.int	JMPTBL (L(55bytes), L(table_64bytes))
++	.int	JMPTBL (L(56bytes), L(table_64bytes))
++	.int	JMPTBL (L(57bytes), L(table_64bytes))
++	.int	JMPTBL (L(58bytes), L(table_64bytes))
++	.int	JMPTBL (L(59bytes), L(table_64bytes))
++	.int	JMPTBL (L(60bytes), L(table_64bytes))
++	.int	JMPTBL (L(61bytes), L(table_64bytes))
++	.int	JMPTBL (L(62bytes), L(table_64bytes))
++	.int	JMPTBL (L(63bytes), L(table_64bytes))
++	.int	JMPTBL (L(64bytes), L(table_64bytes))
++	.size	L(table_64bytes), .-L(table_64bytes)
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/memcmp-ssse3.S b/sysdeps/i386/i686/multiarch/memcmp-ssse3.S
+new file mode 100644
+index 0000000..d2f852f
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/memcmp-ssse3.S
+@@ -0,0 +1,1966 @@
++/* memcmp with SSSE3
++   Copyright (C) 2010 Free Software Foundation, Inc.
++   Contributed by Intel Corporation.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef NOT_IN_libc
++
++#include <sysdep.h>
++#include "asm-syntax.h"
++
++#ifndef MEMCMP
++# define MEMCMP		__memcmp_ssse3
++#endif
++
++#define CFI_PUSH(REG)						\
++  cfi_adjust_cfa_offset (4);					\
++  cfi_rel_offset (REG, 0)
++
++#define CFI_POP(REG)						\
++  cfi_adjust_cfa_offset (-4);					\
++  cfi_restore (REG)
++
++#define PUSH(REG)	pushl REG; CFI_PUSH (REG)
++#define POP(REG)	popl REG; CFI_POP (REG)
++
++#define PARMS		4
++#define BLK1		PARMS
++#define BLK2		BLK1+4
++#define LEN		BLK2+4
++#define RETURN_END	POP (%edi); POP (%esi); POP (%ebx); ret
++#define RETURN		RETURN_END; cfi_restore_state; cfi_remember_state
++
++	.section .text.ssse3,"ax",@progbits
++ENTRY (MEMCMP)
++	movl	LEN(%esp), %ecx
++	movl	BLK1(%esp), %eax
++	cmp	$48, %ecx
++	movl	BLK2(%esp), %edx
++	jae	L(48bytesormore)
++	cmp	$1, %ecx
++	jbe	L(less1bytes)
++	PUSH (%ebx)
++	add	%ecx, %edx
++	add	%ecx, %eax
++	jmp	L(less48bytes)
++
++	ALIGN (4)
++	CFI_POP (%ebx)
++L(less1bytes):
++	jb	L(zero)
++	movb	(%eax), %cl
++	cmp	(%edx), %cl
++	je	L(zero)
++	mov	$1, %eax
++	ja	L(1bytesend)
++	neg	%eax
++L(1bytesend):
++	ret
++
++	ALIGN (4)
++L(zero):
++	mov	$0, %eax
++	ret
++
++	ALIGN (4)
++L(48bytesormore):
++	PUSH (%ebx)
++	PUSH (%esi)
++	PUSH (%edi)
++	cfi_remember_state
++	movdqu    (%eax), %xmm3
++	movdqu    (%edx), %xmm0
++	movl	%eax, %edi
++	movl	%edx, %esi
++	pcmpeqb   %xmm0, %xmm3
++	pmovmskb  %xmm3, %edx
++	lea	16(%edi), %edi
++
++	sub      $0xffff, %edx
++	lea	16(%esi), %esi
++	jnz	  L(less16bytes)
++	mov	%edi, %edx
++	and	$0xf, %edx
++	xor	%edx, %edi
++	sub	%edx, %esi
++	add	%edx, %ecx
++	mov	%esi, %edx
++	and	$0xf, %edx
++	jz	L(shr_0)
++	xor	%edx, %esi
++
++	cmp	$8, %edx
++	jae	L(next_unaligned_table)
++	cmp	$0, %edx
++	je	L(shr_0)
++	cmp	$1, %edx
++	je	L(shr_1)
++	cmp	$2, %edx
++	je	L(shr_2)
++	cmp	$3, %edx
++	je	L(shr_3)
++	cmp	$4, %edx
++	je	L(shr_4)
++	cmp	$5, %edx
++	je	L(shr_5)
++	cmp	$6, %edx
++	je	L(shr_6)
++	jmp	L(shr_7)
++
++	ALIGN (4)
++L(next_unaligned_table):
++	cmp	$8, %edx
++	je	L(shr_8)
++	cmp	$9, %edx
++	je	L(shr_9)
++	cmp	$10, %edx
++	je	L(shr_10)
++	cmp	$11, %edx
++	je	L(shr_11)
++	cmp	$12, %edx
++	je	L(shr_12)
++	cmp	$13, %edx
++	je	L(shr_13)
++	cmp	$14, %edx
++	je	L(shr_14)
++	jmp	L(shr_15)
++
++	ALIGN (4)
++L(shr_0):
++	cmp	$80, %ecx
++	jae	L(shr_0_gobble)
++	lea	-48(%ecx), %ecx
++	xor	%eax, %eax
++	movaps	(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++	movaps	16(%esi), %xmm2
++	pcmpeqb	16(%edi), %xmm2
++	pand	%xmm1, %xmm2
++	pmovmskb %xmm2, %edx
++	add	$32, %edi
++	add	$32, %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_0_gobble):
++	lea	-48(%ecx), %ecx
++	movdqa	(%esi), %xmm0
++	xor	%eax, %eax
++	pcmpeqb	(%edi), %xmm0
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm2
++	pcmpeqb	16(%edi), %xmm2
++L(shr_0_gobble_loop):
++	pand	%xmm0, %xmm2
++	sub	$32, %ecx
++	pmovmskb %xmm2, %edx
++	movdqa	%xmm0, %xmm1
++	movdqa	32(%esi), %xmm0
++	movdqa	48(%esi), %xmm2
++	sbb	$0xffff, %edx
++	pcmpeqb	32(%edi), %xmm0
++	pcmpeqb	48(%edi), %xmm2
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	jz	L(shr_0_gobble_loop)
++
++	pand	%xmm0, %xmm2
++	cmp	$0, %ecx
++	jge	L(shr_0_gobble_loop_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_0_gobble_loop_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm2, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_1):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_1_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$1,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$1,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	1(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_1_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$1,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$1,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_1_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$1,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$1,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_1_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_1_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_1_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	1(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_2):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_2_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$2,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$2,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	2(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_2_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$2,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$2,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_2_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$2,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$2,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_2_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_2_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_2_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	2(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_3):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_3_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$3,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$3,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	3(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_3_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$3,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$3,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_3_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$3,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$3,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_3_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_3_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_3_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	3(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_4):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_4_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$4,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$4,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	4(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_4_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$4,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$4,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_4_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$4,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$4,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_4_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_4_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_4_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	4(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_5):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_5_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$5,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$5,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	5(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_5_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$5,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$5,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_5_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$5,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$5,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_5_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_5_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_5_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	5(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_6):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_6_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$6,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$6,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	6(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_6_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$6,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$6,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_6_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$6,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$6,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_6_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_6_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_6_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	6(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_7):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_7_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$7,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$7,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	7(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_7_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$7,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$7,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_7_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$7,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$7,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_7_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_7_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_7_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	7(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_8):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_8_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$8,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$8,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	8(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_8_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$8,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$8,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_8_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$8,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$8,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_8_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_8_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_8_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	8(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_9):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_9_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$9,(%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$9,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	9(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_9_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$9,(%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$9,16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_9_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$9,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$9,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_9_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_9_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_9_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	9(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_10):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_10_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$10, (%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$10,%xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	10(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_10_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$10, (%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$10, 16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_10_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$10,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$10,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_10_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_10_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_10_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	10(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_11):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_11_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$11, (%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$11, %xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	11(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_11_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$11, (%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$11, 16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_11_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$11,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$11,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_11_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_11_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_11_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	11(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_12):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_12_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$12, (%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$12, %xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	12(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_12_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$12, (%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$12, 16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_12_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$12,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$12,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_12_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_12_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_12_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	12(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_13):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_13_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$13, (%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$13, %xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	13(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_13_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$13, (%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$13, 16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_13_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$13,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$13,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_13_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_13_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_13_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	13(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_14):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_14_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$14, (%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$14, %xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	14(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_14_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$14, (%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$14, 16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_14_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$14,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$14,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_14_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_14_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_14_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	14(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_15):
++	cmp	$80, %ecx
++	lea	-48(%ecx), %ecx
++	mov	%edx, %eax
++	jae	L(shr_15_gobble)
++
++	movdqa	16(%esi), %xmm1
++	movdqa	%xmm1, %xmm2
++	palignr	$15, (%esi), %xmm1
++	pcmpeqb	(%edi), %xmm1
++
++	movdqa	32(%esi), %xmm3
++	palignr	$15, %xmm2, %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++	pand	%xmm1, %xmm3
++	pmovmskb %xmm3, %edx
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++	lea	(%ecx, %edi,1), %eax
++	lea	15(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(shr_15_gobble):
++	sub	$32, %ecx
++	movdqa	16(%esi), %xmm0
++	palignr	$15, (%esi), %xmm0
++	pcmpeqb	(%edi), %xmm0
++
++	movdqa	32(%esi), %xmm3
++	palignr	$15, 16(%esi), %xmm3
++	pcmpeqb	16(%edi), %xmm3
++
++L(shr_15_gobble_loop):
++	pand	%xmm0, %xmm3
++	sub	$32, %ecx
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++
++	movdqa	64(%esi), %xmm3
++	palignr	$15,48(%esi), %xmm3
++	sbb	$0xffff, %edx
++	movdqa	48(%esi), %xmm0
++	palignr	$15,32(%esi), %xmm0
++	pcmpeqb	32(%edi), %xmm0
++	lea	32(%esi), %esi
++	pcmpeqb	48(%edi), %xmm3
++
++	lea	32(%edi), %edi
++	jz	L(shr_15_gobble_loop)
++
++	cmp	$0, %ecx
++	jge	L(shr_15_gobble_next)
++	inc	%edx
++	add	$32, %ecx
++L(shr_15_gobble_next):
++	test	%edx, %edx
++	jnz	L(exit)
++
++	pmovmskb %xmm3, %edx
++	movdqa	%xmm0, %xmm1
++	lea	32(%edi), %edi
++	lea	32(%esi), %esi
++	sub	$0xffff, %edx
++	jnz	L(exit)
++
++	lea	(%ecx, %edi,1), %eax
++	lea	15(%ecx, %esi,1), %edx
++	POP (%edi)
++	POP (%esi)
++	jmp	L(less48bytes)
++
++	cfi_restore_state
++	cfi_remember_state
++	ALIGN (4)
++L(exit):
++	pmovmskb %xmm1, %ebx
++	sub	$0xffff, %ebx
++	jz	L(first16bytes)
++	lea	-16(%esi), %esi
++	lea	-16(%edi), %edi
++	mov	%ebx, %edx
++L(first16bytes):
++	add	%eax, %esi
++L(less16bytes):
++	test	%dl, %dl
++	jz	L(next_24_bytes)
++
++	test	$0x01, %dl
++	jnz	L(Byte16)
++
++	test	$0x02, %dl
++	jnz	L(Byte17)
++
++	test	$0x04, %dl
++	jnz	L(Byte18)
++
++	test	$0x08, %dl
++	jnz	L(Byte19)
++
++	test	$0x10, %dl
++	jnz	L(Byte20)
++
++	test	$0x20, %dl
++	jnz	L(Byte21)
++
++	test	$0x40, %dl
++	jnz	L(Byte22)
++L(Byte23):
++	movzbl	 -9(%edi), %eax
++	movzbl	 -9(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte16):
++	movzbl	 -16(%edi), %eax
++	movzbl	 -16(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte17):
++	movzbl	 -15(%edi), %eax
++	movzbl	 -15(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte18):
++	movzbl	 -14(%edi), %eax
++	movzbl	 -14(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte19):
++	movzbl	 -13(%edi), %eax
++	movzbl	 -13(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte20):
++	movzbl	 -12(%edi), %eax
++	movzbl	 -12(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte21):
++	movzbl	 -11(%edi), %eax
++	movzbl	 -11(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(Byte22):
++	movzbl	 -10(%edi), %eax
++	movzbl	 -10(%esi), %edx
++	sub	%edx, %eax
++	RETURN
++
++	ALIGN (4)
++L(next_24_bytes):
++	lea	8(%edi), %edi
++	lea	8(%esi), %esi
++	test	$0x01, %dh
++	jnz	L(Byte16)
++
++	test	$0x02, %dh
++	jnz	L(Byte17)
++
++	test	$0x04, %dh
++	jnz	L(Byte18)
++
++	test	$0x08, %dh
++	jnz	L(Byte19)
++
++	test	$0x10, %dh
++	jnz	L(Byte20)
++
++	test	$0x20, %dh
++	jnz	L(Byte21)
++
++	test	$0x40, %dh
++	jnz	L(Byte22)
++
++	ALIGN (4)
++L(Byte31):
++	movzbl	 -9(%edi), %eax
++	movzbl	 -9(%esi), %edx
++	sub	%edx, %eax
++	RETURN_END
++
++	CFI_PUSH (%ebx)
++	ALIGN (4)
++L(more8bytes):
++	cmp	$16, %ecx
++	jae	L(more16bytes)
++	cmp	$8, %ecx
++	je	L(8bytes)
++	cmp	$9, %ecx
++	je	L(9bytes)
++	cmp	$10, %ecx
++	je	L(10bytes)
++	cmp	$11, %ecx
++	je	L(11bytes)
++	cmp	$12, %ecx
++	je	L(12bytes)
++	cmp	$13, %ecx
++	je	L(13bytes)
++	cmp	$14, %ecx
++	je	L(14bytes)
++	jmp	L(15bytes)
++
++	ALIGN (4)
++L(more16bytes):
++	cmp	$24, %ecx
++	jae	L(more24bytes)
++	cmp	$16, %ecx
++	je	L(16bytes)
++	cmp	$17, %ecx
++	je	L(17bytes)
++	cmp	$18, %ecx
++	je	L(18bytes)
++	cmp	$19, %ecx
++	je	L(19bytes)
++	cmp	$20, %ecx
++	je	L(20bytes)
++	cmp	$21, %ecx
++	je	L(21bytes)
++	cmp	$22, %ecx
++	je	L(22bytes)
++	jmp	L(23bytes)
++
++	ALIGN (4)
++L(more24bytes):
++	cmp	$32, %ecx
++	jae	L(more32bytes)
++	cmp	$24, %ecx
++	je	L(24bytes)
++	cmp	$25, %ecx
++	je	L(25bytes)
++	cmp	$26, %ecx
++	je	L(26bytes)
++	cmp	$27, %ecx
++	je	L(27bytes)
++	cmp	$28, %ecx
++	je	L(28bytes)
++	cmp	$29, %ecx
++	je	L(29bytes)
++	cmp	$30, %ecx
++	je	L(30bytes)
++	jmp	L(31bytes)
++
++	ALIGN (4)
++L(more32bytes):
++	cmp	$40, %ecx
++	jae	L(more40bytes)
++	cmp	$32, %ecx
++	je	L(32bytes)
++	cmp	$33, %ecx
++	je	L(33bytes)
++	cmp	$34, %ecx
++	je	L(34bytes)
++	cmp	$35, %ecx
++	je	L(35bytes)
++	cmp	$36, %ecx
++	je	L(36bytes)
++	cmp	$37, %ecx
++	je	L(37bytes)
++	cmp	$38, %ecx
++	je	L(38bytes)
++	jmp	L(39bytes)
++
++	ALIGN (4)
++L(more40bytes):
++	cmp	$40, %ecx
++	je	L(40bytes)
++	cmp	$41, %ecx
++	je	L(41bytes)
++	cmp	$42, %ecx
++	je	L(42bytes)
++	cmp	$43, %ecx
++	je	L(43bytes)
++	cmp	$44, %ecx
++	je	L(44bytes)
++	cmp	$45, %ecx
++	je	L(45bytes)
++	cmp	$46, %ecx
++	je	L(46bytes)
++	jmp	L(47bytes)
++
++	ALIGN (4)
++L(less48bytes):
++	cmp	$8, %ecx
++	jae	L(more8bytes)
++	cmp	$2, %ecx
++	je	L(2bytes)
++	cmp	$3, %ecx
++	je	L(3bytes)
++	cmp	$4, %ecx
++	je	L(4bytes)
++	cmp	$5, %ecx
++	je	L(5bytes)
++	cmp	$6, %ecx
++	je	L(6bytes)
++	jmp	L(7bytes)
++
++	ALIGN (4)
++L(44bytes):
++	mov	-44(%eax), %ecx
++	mov	-44(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(40bytes):
++	mov	-40(%eax), %ecx
++	mov	-40(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(36bytes):
++	mov	-36(%eax), %ecx
++	mov	-36(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(32bytes):
++	mov	-32(%eax), %ecx
++	mov	-32(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(28bytes):
++	mov	-28(%eax), %ecx
++	mov	-28(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(24bytes):
++	mov	-24(%eax), %ecx
++	mov	-24(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(20bytes):
++	mov	-20(%eax), %ecx
++	mov	-20(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(16bytes):
++	mov	-16(%eax), %ecx
++	mov	-16(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(12bytes):
++	mov	-12(%eax), %ecx
++	mov	-12(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(8bytes):
++	mov	-8(%eax), %ecx
++	mov	-8(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(4bytes):
++	mov	-4(%eax), %ecx
++	mov	-4(%edx), %ebx
++	cmp	%ebx, %ecx
++	mov	$0, %eax
++	jne	L(find_diff)
++	POP (%ebx)
++	ret
++	CFI_PUSH (%ebx)
++
++	ALIGN (4)
++L(45bytes):
++	mov	-45(%eax), %ecx
++	mov	-45(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(41bytes):
++	mov	-41(%eax), %ecx
++	mov	-41(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(37bytes):
++	mov	-37(%eax), %ecx
++	mov	-37(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(33bytes):
++	mov	-33(%eax), %ecx
++	mov	-33(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(29bytes):
++	mov	-29(%eax), %ecx
++	mov	-29(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(25bytes):
++	mov	-25(%eax), %ecx
++	mov	-25(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(21bytes):
++	mov	-21(%eax), %ecx
++	mov	-21(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(17bytes):
++	mov	-17(%eax), %ecx
++	mov	-17(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(13bytes):
++	mov	-13(%eax), %ecx
++	mov	-13(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(9bytes):
++	mov	-9(%eax), %ecx
++	mov	-9(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(5bytes):
++	mov	-5(%eax), %ecx
++	mov	-5(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++	movzbl	-1(%eax), %ecx
++	cmp	-1(%edx), %cl
++	mov	$0, %eax
++	jne	L(end)
++	POP (%ebx)
++	ret
++	CFI_PUSH (%ebx)
++
++	ALIGN (4)
++L(46bytes):
++	mov	-46(%eax), %ecx
++	mov	-46(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(42bytes):
++	mov	-42(%eax), %ecx
++	mov	-42(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(38bytes):
++	mov	-38(%eax), %ecx
++	mov	-38(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(34bytes):
++	mov	-34(%eax), %ecx
++	mov	-34(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(30bytes):
++	mov	-30(%eax), %ecx
++	mov	-30(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(26bytes):
++	mov	-26(%eax), %ecx
++	mov	-26(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(22bytes):
++	mov	-22(%eax), %ecx
++	mov	-22(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(18bytes):
++	mov	-18(%eax), %ecx
++	mov	-18(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(14bytes):
++	mov	-14(%eax), %ecx
++	mov	-14(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(10bytes):
++	mov	-10(%eax), %ecx
++	mov	-10(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(6bytes):
++	mov	-6(%eax), %ecx
++	mov	-6(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(2bytes):
++	movzwl	-2(%eax), %ecx
++	movzwl	-2(%edx), %ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bh, %ch
++	mov	$0, %eax
++	jne	L(end)
++	POP (%ebx)
++	ret
++	CFI_PUSH (%ebx)
++
++	ALIGN (4)
++L(47bytes):
++	movl	-47(%eax), %ecx
++	movl	-47(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(43bytes):
++	movl	-43(%eax), %ecx
++	movl	-43(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(39bytes):
++	movl	-39(%eax), %ecx
++	movl	-39(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(35bytes):
++	movl	-35(%eax), %ecx
++	movl	-35(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(31bytes):
++	movl	-31(%eax), %ecx
++	movl	-31(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(27bytes):
++	movl	-27(%eax), %ecx
++	movl	-27(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(23bytes):
++	movl	-23(%eax), %ecx
++	movl	-23(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(19bytes):
++	movl	-19(%eax), %ecx
++	movl	-19(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(15bytes):
++	movl	-15(%eax), %ecx
++	movl	-15(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(11bytes):
++	movl	-11(%eax), %ecx
++	movl	-11(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(7bytes):
++	movl	-7(%eax), %ecx
++	movl	-7(%edx), %ebx
++	cmp	%ebx, %ecx
++	jne	L(find_diff)
++L(3bytes):
++	movzwl	-3(%eax), %ecx
++	movzwl	-3(%edx), %ebx
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++	movzbl	-1(%eax), %eax
++	cmpb	-1(%edx), %al
++	mov	$0, %eax
++	jne	L(end)
++	POP (%ebx)
++	ret
++	CFI_PUSH (%ebx)
++
++	ALIGN (4)
++L(find_diff):
++	cmpb	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++	jne	L(end)
++	shr	$16,%ecx
++	shr	$16,%ebx
++	cmp	%bl, %cl
++	jne	L(end)
++	cmp	%bx, %cx
++L(end):
++	POP (%ebx)
++	mov	$1, %eax
++	ja	L(bigger)
++	neg	%eax
++L(bigger):
++	ret
++
++END (MEMCMP)
++
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/memcmp.S b/sysdeps/i386/i686/multiarch/memcmp.S
+new file mode 100644
+index 0000000..cf606a5
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/memcmp.S
+@@ -0,0 +1,88 @@
++/* Multiple versions of memcmp
++   Copyright (C) 2010 Free Software Foundation, Inc.
++   Contributed by Intel Corporation.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#include <sysdep.h>
++#include <init-arch.h>
++
++/* Define multiple versions only for the definition in libc. */
++#ifndef NOT_IN_libc
++# ifdef SHARED
++	.text
++ENTRY(memcmp)
++	.type	memcmp, @gnu_indirect_function
++	pushl	%ebx
++	cfi_adjust_cfa_offset (4)
++	cfi_rel_offset (ebx, 0)
++	call	__i686.get_pc_thunk.bx
++	addl	$_GLOBAL_OFFSET_TABLE_, %ebx
++	cmpl	$0, KIND_OFFSET+__cpu_features@GOTOFF(%ebx)
++	jne	1f
++	call	__init_cpu_features
++1:	leal	__memcmp_ia32@GOTOFF(%ebx), %eax
++	testl	$bit_SSSE3, CPUID_OFFSET+index_SSSE3+__cpu_features@GOTOFF(%ebx)
++	jz	2f
++	leal	__memcmp_ssse3@GOTOFF(%ebx), %eax
++	testl	$bit_SSE4_2, CPUID_OFFSET+index_SSE4_2+__cpu_features@GOTOFF(%ebx)
++	jz	2f
++	leal	__memcmp_sse4_2@GOTOFF(%ebx), %eax
++2:	popl	%ebx
++	cfi_adjust_cfa_offset (-4)
++	cfi_restore (ebx)
++	ret
++END(memcmp)
++# else
++	.text
++ENTRY(memcmp)
++	.type	memcmp, @gnu_indirect_function
++	cmpl	$0, KIND_OFFSET+__cpu_features
++	jne	1f
++	call	__init_cpu_features
++1:	leal	__memcmp_ia32, %eax
++	testl	$bit_SSSE3, CPUID_OFFSET+index_SSSE3+__cpu_features
++	jz	2f
++	leal	__memcmp_ssse3, %eax
++	testl	$bit_SSE4_2, CPUID_OFFSET+index_SSE4_2+__cpu_features
++	jz	2f
++	leal	__memcmp_sse4_2, %eax
++2:	ret
++END(memcmp)
++# endif
++
++# undef ENTRY
++# define ENTRY(name) \
++	.type __memcmp_ia32, @function; \
++	.p2align 4; \
++	__memcmp_ia32: cfi_startproc; \
++	CALL_MCOUNT
++# undef END
++# define END(name) \
++	cfi_endproc; .size __memcmp_ia32, .-__memcmp_ia32
++
++# ifdef SHARED
++#  undef libc_hidden_builtin_def
++/* IFUNC doesn't work with the hidden functions in shared library since
++   they will be called without setting up EBX needed for PLT which is
++   used by IFUNC.  */
++#  define libc_hidden_builtin_def(name) \
++	.globl __GI_memcmp; __GI_memcmp = __memcmp_ia32
++# endif
++#endif
++
++#include "../memcmp.S"
+diff --git a/sysdeps/i386/i686/multiarch/strcmp-sse4.S b/sysdeps/i386/i686/multiarch/strcmp-sse4.S
+new file mode 100644
+index 0000000..d5fd23e
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strcmp-sse4.S
+@@ -0,0 +1,378 @@
++/* strcmp with SSE4.2
++   Copyright (C) 2010 Free Software Foundation, Inc.
++   Contributed by Intel Corporation.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef NOT_IN_libc
++
++#include <sysdep.h>
++#include "asm-syntax.h"
++
++#define CFI_PUSH(REG)						\
++  cfi_adjust_cfa_offset (4);					\
++  cfi_rel_offset (REG, 0)
++
++#define CFI_POP(REG)						\
++  cfi_adjust_cfa_offset (-4);					\
++  cfi_restore (REG)
++
++#define PUSH(REG)	pushl REG; CFI_PUSH (REG)
++#define POP(REG)	popl REG; CFI_POP (REG)
++
++#ifndef USE_AS_STRNCMP
++# ifndef STRCMP
++#  define STRCMP	__strcmp_sse4_2
++# endif
++# define STR1		4
++# define STR2		STR1+4
++# define RETURN		ret; .p2align 4
++#else
++# ifndef STRCMP
++#  define STRCMP	__strncmp_sse4_2
++# endif
++# define STR1		8
++# define STR2		STR1+4
++# define CNT		STR2+4
++# define RETURN		POP (%ebp); ret; .p2align 4; CFI_PUSH (%ebp)
++#endif
++
++	.section .text.sse4.2,"ax",@progbits
++ENTRY (STRCMP)
++#ifdef USE_AS_STRNCMP
++	PUSH	(%ebp)
++#endif
++	mov	STR1(%esp), %edx
++	mov	STR2(%esp), %eax
++#ifdef USE_AS_STRNCMP
++	movl	CNT(%esp), %ebp
++	test	%ebp, %ebp
++	je	L(eq)
++#endif
++	mov	%dx, %cx
++	and	$0xfff, %cx
++	cmp	$0xff0, %cx
++	ja	L(first4bytes)
++	movdqu	(%edx), %xmm2
++	mov	%eax, %ecx
++	and	$0xfff, %ecx
++	cmp	$0xff0, %ecx
++	ja	L(first4bytes)
++	movd	%xmm2, %ecx
++	cmp	(%eax), %ecx
++	jne	L(less4bytes)
++	movdqu	(%eax), %xmm1
++	pxor	%xmm2, %xmm1
++	pxor	%xmm0, %xmm0
++	ptest	%xmm1, %xmm0
++	jnc	L(less16bytes)
++	pcmpeqb	%xmm0, %xmm2
++	ptest	%xmm2, %xmm0
++	jnc	L(less16bytes)
++
++#ifdef USE_AS_STRNCMP
++	sub	$16, %ebp
++	jbe	L(eq)
++#endif
++	add	$16, %edx
++	add	$16, %eax
++L(first4bytes):
++	movzbl	(%eax), %ecx
++	cmpb	%cl, (%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$1, %ebp
++	je	L(eq)
++#endif
++
++	movzbl	1(%eax), %ecx
++	cmpb	%cl, 1(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$2, %ebp
++	je	L(eq)
++#endif
++	movzbl	2(%eax), %ecx
++	cmpb	%cl, 2(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$3, %ebp
++	je	L(eq)
++#endif
++	movzbl	3(%eax), %ecx
++	cmpb	%cl, 3(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$4, %ebp
++	je	L(eq)
++#endif
++	movzbl	4(%eax), %ecx
++	cmpb	%cl, 4(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$5, %ebp
++	je	L(eq)
++#endif
++	movzbl	5(%eax), %ecx
++	cmpb	%cl, 5(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$6, %ebp
++	je	L(eq)
++#endif
++	movzbl	6(%eax), %ecx
++	cmpb	%cl, 6(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$7, %ebp
++	je	L(eq)
++#endif
++	movzbl	7(%eax), %ecx
++	cmpb	%cl, 7(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	sub	$8, %ebp
++	je	L(eq)
++#endif
++	add	$8, %eax
++	add	$8, %edx
++
++	PUSH	(%ebx)
++	PUSH	(%edi)
++	PUSH	(%esi)
++	cfi_remember_state
++	mov	%edx, %edi
++	mov	%eax, %esi
++	xorl	%eax, %eax
++L(check_offset):
++	movl	%edi, %ebx
++	movl	%esi, %ecx
++	andl	$0xfff, %ebx
++	andl	$0xfff, %ecx
++	cmpl	%ebx, %ecx
++	cmovl	%ebx, %ecx
++	lea	-0xff0(%ecx), %edx
++	sub	%edx, %edi
++	sub	%edx, %esi
++	testl	%edx, %edx
++	jg	L(crosspage)
++L(loop):
++	movdqu	(%esi,%edx), %xmm2
++	movdqu	(%edi,%edx), %xmm1
++	pcmpistri	$0x1a, %xmm2, %xmm1
++	jbe	L(end)
++
++#ifdef USE_AS_STRNCMP
++	sub	$16, %ebp
++	jbe	L(more16byteseq)
++#endif
++
++	add	$16, %edx
++	jle	L(loop)
++L(crosspage):
++	movzbl	(%edi,%edx), %eax
++	movzbl	(%esi,%edx), %ebx
++	subl	%ebx, %eax
++	jne	L(ret)
++	testl	%ebx, %ebx
++	je	L(ret)
++#ifdef USE_AS_STRNCMP
++	sub	$1, %ebp
++	jbe	L(more16byteseq)
++#endif
++	inc	%edx
++	cmp	$15, %edx
++	jle	L(crosspage)
++	add	$16, %edi
++	add	$16, %esi
++	jmp	L(check_offset)
++
++	.p2align 4
++L(end):
++	jnc	L(ret)
++#ifdef USE_AS_STRNCMP
++	sub	%ecx, %ebp
++	jbe	L(more16byteseq)
++#endif
++	lea	(%ecx,%edx), %ebx
++	movzbl	(%edi,%ebx), %eax
++	movzbl	(%esi,%ebx), %ecx
++	subl	%ecx, %eax
++L(ret):
++	POP	(%esi)
++	POP	(%edi)
++	POP	(%ebx)
++#ifdef USE_AS_STRNCMP
++	POP	(%ebp)
++#endif
++	ret
++
++	.p2align 4
++	cfi_restore_state
++#ifdef USE_AS_STRNCMP
++L(more16byteseq):
++	POP	(%esi)
++	POP	(%edi)
++	POP	(%ebx)
++#endif
++L(eq):
++	xorl	%eax, %eax
++	RETURN
++
++L(neq):
++	mov	$1, %eax
++	ja	L(neq_bigger)
++	neg	%eax
++L(neq_bigger):
++	RETURN
++
++L(less16bytes):
++	add	$0xfefefeff, %ecx
++	jnc	L(less4bytes)
++	xor	(%edx), %ecx
++	or	$0xfefefeff, %ecx
++	add	$1, %ecx
++	jnz	L(less4bytes)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$4, %ebp
++	jbe	L(eq)
++#endif
++	mov	4(%edx), %ecx
++	cmp	4(%eax), %ecx
++	jne	L(more4bytes)
++	add	$0xfefefeff, %ecx
++	jnc	L(more4bytes)
++	xor	4(%edx), %ecx
++	or	$0xfefefeff, %ecx
++	add	$1, %ecx
++	jnz	L(more4bytes)
++
++#ifdef USE_AS_STRNCMP
++	sub	$8, %ebp
++	jbe	L(eq)
++#endif
++
++	add	$8, %edx
++	add	$8, %eax
++L(less4bytes):
++
++	movzbl	(%eax), %ecx
++	cmpb	%cl, (%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$1, %ebp
++	je	L(eq)
++#endif
++	movzbl	1(%eax), %ecx
++	cmpb	%cl, 1(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$2, %ebp
++	je	L(eq)
++#endif
++
++	movzbl	2(%eax), %ecx
++	cmpb	%cl, 2(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$3, %ebp
++	je	L(eq)
++#endif
++	movzbl	3(%eax), %ecx
++	cmpb	%cl, 3(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++L(more4bytes):
++#ifdef USE_AS_STRNCMP
++	cmp	$4, %ebp
++	je	L(eq)
++#endif
++	movzbl	4(%eax), %ecx
++	cmpb	%cl, 4(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++
++#ifdef USE_AS_STRNCMP
++	cmp	$5, %ebp
++	je	L(eq)
++#endif
++	movzbl	5(%eax), %ecx
++	cmpb	%cl, 5(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$6, %ebp
++	je	L(eq)
++#endif
++	movzbl	6(%eax), %ecx
++	cmpb	%cl, 6(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$7, %ebp
++	je	L(eq)
++#endif
++	movzbl	7(%eax), %ecx
++	cmpb	%cl, 7(%edx)
++	jne	L(neq)
++	jmp	L(eq)
++
++END (STRCMP)
++
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/strcmp-ssse3.S b/sysdeps/i386/i686/multiarch/strcmp-ssse3.S
+new file mode 100644
+index 0000000..40994c0
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strcmp-ssse3.S
+@@ -0,0 +1,2220 @@
++/* strcmp with SSSE3
++   Copyright (C) 2010 Free Software Foundation, Inc.
++   Contributed by Intel Corporation.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef NOT_IN_libc
++
++#include <sysdep.h>
++#include "asm-syntax.h"
++
++#define CFI_PUSH(REG)						\
++  cfi_adjust_cfa_offset (4);					\
++  cfi_rel_offset (REG, 0)
++
++#define CFI_POP(REG)						\
++  cfi_adjust_cfa_offset (-4);					\
++  cfi_restore (REG)
++
++#define PUSH(REG)	pushl REG; CFI_PUSH (REG)
++#define POP(REG)	popl REG; CFI_POP (REG)
++
++#ifndef USE_AS_STRNCMP
++# ifndef STRCMP
++#  define STRCMP	__strcmp_ssse3
++# endif
++# define STR1		4
++# define STR2		STR1+4
++# define RETURN		ret; .p2align 4
++# define UPDATE_STRNCMP_COUNTER
++#else
++# ifndef STRCMP
++#  define STRCMP	__strncmp_ssse3
++# endif
++# define STR1		8
++# define STR2		STR1+4
++# define CNT		STR2+4
++# define RETURN		POP (%ebp); ret; .p2align 4; CFI_PUSH (%ebp)
++# define UPDATE_STRNCMP_COUNTER				\
++	/* calculate left number to compare */		\
++	mov	$16, %esi;				\
++	sub	%ecx, %esi;				\
++	cmp	%esi, %ebp;				\
++	jbe	L(more8byteseq);			\
++	sub	%esi, %ebp
++#endif
++
++	.section .text.ssse3,"ax",@progbits
++ENTRY (STRCMP)
++#ifdef USE_AS_STRNCMP
++	PUSH	(%ebp)
++#endif
++	movl	STR1(%esp), %edx
++	movl	STR2(%esp), %eax
++#ifdef USE_AS_STRNCMP
++	movl	CNT(%esp), %ebp
++	cmp	$16, %ebp
++	jb	L(less16bytes_sncmp)
++	jmp	L(more16bytes)
++#endif
++
++	movzbl	(%eax), %ecx
++	cmpb	%cl, (%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	1(%eax), %ecx
++	cmpb	%cl, 1(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	2(%eax), %ecx
++	cmpb	%cl, 2(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	3(%eax), %ecx
++	cmpb	%cl, 3(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	4(%eax), %ecx
++	cmpb	%cl, 4(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	5(%eax), %ecx
++	cmpb	%cl, 5(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	6(%eax), %ecx
++	cmpb	%cl, 6(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	movzbl	7(%eax), %ecx
++	cmpb	%cl, 7(%edx)
++	jne	L(neq)
++	cmpl	$0, %ecx
++	je	L(eq)
++
++	add	$8, %edx
++	add	$8, %eax
++#ifdef USE_AS_STRNCMP
++	cmp	$8, %ebp
++	lea	-8(%ebp), %ebp
++	je	L(eq)
++L(more16bytes):
++#endif
++	movl	%edx, %ecx
++	and	$0xfff, %ecx
++	cmp	$0xff0, %ecx
++	ja	L(crosspage)
++	mov	%eax, %ecx
++	and	$0xfff, %ecx
++	cmp	$0xff0, %ecx
++	ja	L(crosspage)
++	pxor	%xmm0, %xmm0
++	movlpd	(%eax), %xmm1
++	movlpd	(%edx), %xmm2
++	movhpd	8(%eax), %xmm1
++	movhpd	8(%edx), %xmm2
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %ecx
++	sub	$0xffff, %ecx
++	jnz	L(less16bytes)
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(eq)
++#endif
++	add	$16, %eax
++	add	$16, %edx
++
++L(crosspage):
++
++	PUSH	(%ebx)
++	PUSH	(%edi)
++	PUSH	(%esi)
++#ifdef USE_AS_STRNCMP
++	cfi_remember_state
++#endif
++
++	movl	%edx, %edi
++	movl	%eax, %ecx
++	and	$0xf, %ecx
++	and	$0xf, %edi
++	xor	%ecx, %eax
++	xor	%edi, %edx
++	xor	%ebx, %ebx
++	cmp	%edi, %ecx
++	je	L(ashr_0)
++	ja	L(bigger)
++	or	$0x20, %ebx
++	xchg	%edx, %eax
++	xchg	%ecx, %edi
++L(bigger):
++	lea	15(%edi), %edi
++	sub	%ecx, %edi
++	cmp	$8, %edi
++	jle	L(ashr_less_8)
++	cmp	$14, %edi
++	je	L(ashr_15)
++	cmp	$13, %edi
++	je	L(ashr_14)
++	cmp	$12, %edi
++	je	L(ashr_13)
++	cmp	$11, %edi
++	je	L(ashr_12)
++	cmp	$10, %edi
++	je	L(ashr_11)
++	cmp	$9, %edi
++	je	L(ashr_10)
++L(ashr_less_8):
++	je	L(ashr_9)
++	cmp	$7, %edi
++	je	L(ashr_8)
++	cmp	$6, %edi
++	je	L(ashr_7)
++	cmp	$5, %edi
++	je	L(ashr_6)
++	cmp	$4, %edi
++	je	L(ashr_5)
++	cmp	$3, %edi
++	je	L(ashr_4)
++	cmp	$2, %edi
++	je	L(ashr_3)
++	cmp	$1, %edi
++	je	L(ashr_2)
++	cmp	$0, %edi
++	je	L(ashr_1)
++
++/*
++ * The following cases will be handled by ashr_0
++ *  ecx(offset of esi)  eax(offset of edi)  relative offset  corresponding case
++ *        n(0~15)            n(0~15)           15(15+ n-n)         ashr_0
++ */
++	.p2align 4
++L(ashr_0):
++	mov	$0xffff, %esi
++	movdqa	(%eax), %xmm1
++	pxor	%xmm0, %xmm0
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	(%edx), %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	mov	%ecx, %edi
++	jne	L(less32bytes)
++	UPDATE_STRNCMP_COUNTER
++	mov	$0x10, %ebx
++	mov	$0x10, %ecx
++	pxor	%xmm0, %xmm0
++	.p2align 4
++L(loop_ashr_0):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	jmp	L(loop_ashr_0)
++
++/*
++ * The following cases will be handled by ashr_1
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(15)            n -15            0(15 +(n-15) - n)         ashr_1
++ */
++	.p2align 4
++L(ashr_1):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$15, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-15(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$1, %ebx
++	lea	1(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_1):
++	add	$16, %edi
++	jg	L(nibble_ashr_1)
++
++L(gobble_ashr_1):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$1, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_1)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$1, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_1)
++
++	.p2align 4
++L(nibble_ashr_1):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xfffe, %esi
++	jnz	L(ashr_1_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$15, %ebp
++	jbe	L(ashr_1_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_1)
++
++	.p2align 4
++L(ashr_1_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$1, %xmm0
++	psrldq	$1, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_2
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(14~15)            n -14            1(15 +(n-14) - n)         ashr_2
++ */
++	.p2align 4
++L(ashr_2):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$14, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-14(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$2, %ebx
++	lea	2(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_2):
++	add	$16, %edi
++	jg	L(nibble_ashr_2)
++
++L(gobble_ashr_2):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$2, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_2)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$2, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_2)
++
++	.p2align 4
++L(nibble_ashr_2):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xfffc, %esi
++	jnz	L(ashr_2_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$14, %ebp
++	jbe	L(ashr_2_exittail)
++#endif
++
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_2)
++
++	.p2align 4
++L(ashr_2_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$2, %xmm0
++	psrldq	$2, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_3
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(13~15)            n -13            2(15 +(n-13) - n)         ashr_3
++ */
++	.p2align 4
++L(ashr_3):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$13, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-13(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$3, %ebx
++	lea	3(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_3):
++	add	$16, %edi
++	jg	L(nibble_ashr_3)
++
++L(gobble_ashr_3):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$3, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_3)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$3, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_3)
++
++	.p2align 4
++L(nibble_ashr_3):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xfff8, %esi
++	jnz	L(ashr_3_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$13, %ebp
++	jbe	L(ashr_3_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_3)
++
++	.p2align 4
++L(ashr_3_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$3, %xmm0
++	psrldq	$3, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_4
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(12~15)            n -12            3(15 +(n-12) - n)         ashr_4
++ */
++	.p2align 4
++L(ashr_4):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$12, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-12(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$4, %ebx
++	lea	4(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_4):
++	add	$16, %edi
++	jg	L(nibble_ashr_4)
++
++L(gobble_ashr_4):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$4, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_4)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$4, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_4)
++
++	.p2align 4
++L(nibble_ashr_4):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xfff0, %esi
++	jnz	L(ashr_4_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$12, %ebp
++	jbe	L(ashr_4_exittail)
++#endif
++
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_4)
++
++	.p2align 4
++L(ashr_4_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$4, %xmm0
++	psrldq	$4, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_5
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(11~15)            n -11            4(15 +(n-11) - n)         ashr_5
++ */
++	.p2align 4
++L(ashr_5):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$11, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-11(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$5, %ebx
++	lea	5(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_5):
++	add	$16, %edi
++	jg	L(nibble_ashr_5)
++
++L(gobble_ashr_5):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$5, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_5)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$5, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_5)
++
++	.p2align 4
++L(nibble_ashr_5):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xffe0, %esi
++	jnz	L(ashr_5_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$11, %ebp
++	jbe	L(ashr_5_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_5)
++
++	.p2align 4
++L(ashr_5_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$5, %xmm0
++	psrldq	$5, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_6
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(10~15)            n -10            5(15 +(n-10) - n)         ashr_6
++ */
++
++	.p2align 4
++L(ashr_6):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$10, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-10(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$6, %ebx
++	lea	6(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_6):
++	add	$16, %edi
++	jg	L(nibble_ashr_6)
++
++L(gobble_ashr_6):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$6, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_6)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$6, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_6)
++
++	.p2align 4
++L(nibble_ashr_6):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xffc0, %esi
++	jnz	L(ashr_6_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$10, %ebp
++	jbe	L(ashr_6_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_6)
++
++	.p2align 4
++L(ashr_6_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$6, %xmm0
++	psrldq	$6, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_7
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(9~15)            n - 9            6(15 +(n-9) - n)         ashr_7
++ */
++
++	.p2align 4
++L(ashr_7):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$9, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-9(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$7, %ebx
++	lea	8(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_7):
++	add	$16, %edi
++	jg	L(nibble_ashr_7)
++
++L(gobble_ashr_7):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$7, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_7)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$7, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_7)
++
++	.p2align 4
++L(nibble_ashr_7):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xff80, %esi
++	jnz	L(ashr_7_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$9, %ebp
++	jbe	L(ashr_7_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_7)
++
++	.p2align 4
++L(ashr_7_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$7, %xmm0
++	psrldq	$7, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_8
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(8~15)            n - 8            7(15 +(n-8) - n)         ashr_8
++ */
++	.p2align 4
++L(ashr_8):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$8, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-8(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$8, %ebx
++	lea	8(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_8):
++	add	$16, %edi
++	jg	L(nibble_ashr_8)
++
++L(gobble_ashr_8):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$8, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_8)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$8, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_8)
++
++	.p2align 4
++L(nibble_ashr_8):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xff00, %esi
++	jnz	L(ashr_8_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$8, %ebp
++	jbe	L(ashr_8_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_8)
++
++	.p2align 4
++L(ashr_8_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$8, %xmm0
++	psrldq	$8, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_9
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(7~15)            n - 7            8(15 +(n-7) - n)         ashr_9
++ */
++	.p2align 4
++L(ashr_9):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$7, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-7(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$9, %ebx
++	lea	9(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_9):
++	add	$16, %edi
++	jg	L(nibble_ashr_9)
++
++L(gobble_ashr_9):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$9, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_9)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$9, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_9)
++
++	.p2align 4
++L(nibble_ashr_9):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xfe00, %esi
++	jnz	L(ashr_9_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$7, %ebp
++	jbe	L(ashr_9_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_9)
++
++	.p2align 4
++L(ashr_9_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$9, %xmm0
++	psrldq	$9, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_10
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(6~15)            n - 6            9(15 +(n-6) - n)         ashr_10
++ */
++	.p2align 4
++L(ashr_10):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$6, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-6(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$10, %ebx
++	lea	10(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_10):
++	add	$16, %edi
++	jg	L(nibble_ashr_10)
++
++L(gobble_ashr_10):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$10, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_10)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$10, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_10)
++
++	.p2align 4
++L(nibble_ashr_10):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xfc00, %esi
++	jnz	L(ashr_10_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$6, %ebp
++	jbe	L(ashr_10_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_10)
++
++	.p2align 4
++L(ashr_10_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$10, %xmm0
++	psrldq	$10, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_11
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(5~15)            n - 5            10(15 +(n-5) - n)         ashr_11
++ */
++	.p2align 4
++L(ashr_11):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$5, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-5(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$11, %ebx
++	lea	11(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_11):
++	add	$16, %edi
++	jg	L(nibble_ashr_11)
++
++L(gobble_ashr_11):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$11, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_11)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$11, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_11)
++
++	.p2align 4
++L(nibble_ashr_11):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xf800, %esi
++	jnz	L(ashr_11_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$5, %ebp
++	jbe	L(ashr_11_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_11)
++
++	.p2align 4
++L(ashr_11_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$11, %xmm0
++	psrldq	$11, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_12
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(4~15)            n - 4            11(15 +(n-4) - n)         ashr_12
++ */
++	.p2align 4
++L(ashr_12):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$4, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-4(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$12, %ebx
++	lea	12(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_12):
++	add	$16, %edi
++	jg	L(nibble_ashr_12)
++
++L(gobble_ashr_12):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$12, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_12)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$12, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_12)
++
++	.p2align 4
++L(nibble_ashr_12):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xf000, %esi
++	jnz	L(ashr_12_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$4, %ebp
++	jbe	L(ashr_12_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_12)
++
++	.p2align 4
++L(ashr_12_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$12, %xmm0
++	psrldq	$12, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_13
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(3~15)            n - 3            12(15 +(n-3) - n)         ashr_13
++ */
++	.p2align 4
++L(ashr_13):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$3, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-3(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$13, %ebx
++	lea	13(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_13):
++	add	$16, %edi
++	jg	L(nibble_ashr_13)
++
++L(gobble_ashr_13):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$13, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_13)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$13, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_13)
++
++	.p2align 4
++L(nibble_ashr_13):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xe000, %esi
++	jnz	L(ashr_13_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$3, %ebp
++	jbe	L(ashr_13_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_13)
++
++	.p2align 4
++L(ashr_13_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$13, %xmm0
++	psrldq	$13, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_14
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(2~15)            n - 2            13(15 +(n-2) - n)         ashr_14
++ */
++	.p2align 4
++L(ashr_14):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$2, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-2(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$14, %ebx
++	lea	14(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_14):
++	add	$16, %edi
++	jg	L(nibble_ashr_14)
++
++L(gobble_ashr_14):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$14, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_14)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$14, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_14)
++
++	.p2align 4
++L(nibble_ashr_14):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0xc000, %esi
++	jnz	L(ashr_14_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$2, %ebp
++	jbe	L(ashr_14_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_14)
++
++	.p2align 4
++L(ashr_14_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$14, %xmm0
++	psrldq	$14, %xmm3
++	jmp	L(aftertail)
++
++/*
++ * The following cases will be handled by ashr_14
++ * ecx(offset of esi)  eax(offset of edi)   relative offset	corresponding case
++ *        n(1~15)            n - 1            14(15 +(n-1) - n)         ashr_15
++ */
++
++	.p2align 4
++L(ashr_15):
++	mov	$0xffff, %esi
++	pxor	%xmm0, %xmm0
++	movdqa	(%edx), %xmm2
++	movdqa	(%eax), %xmm1
++	pcmpeqb	%xmm1, %xmm0
++	pslldq	$1, %xmm2
++	pcmpeqb	%xmm1, %xmm2
++	psubb	%xmm0, %xmm2
++	pmovmskb %xmm2, %edi
++	shr	%cl, %esi
++	shr	%cl, %edi
++	sub	%edi, %esi
++	lea	-1(%ecx), %edi
++	jnz	L(less32bytes)
++
++	UPDATE_STRNCMP_COUNTER
++
++	movdqa	(%edx), %xmm3
++	pxor	%xmm0, %xmm0
++	mov	$16, %ecx
++	or	$15, %ebx
++	lea	15(%edx), %edi
++	and	$0xfff, %edi
++	sub	$0x1000, %edi
++
++	.p2align 4
++L(loop_ashr_15):
++	add	$16, %edi
++	jg	L(nibble_ashr_15)
++
++L(gobble_ashr_15):
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$15, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++
++	add	$16, %edi
++	jg	L(nibble_ashr_15)
++
++	movdqa	(%eax, %ecx), %xmm1
++	movdqa	(%edx, %ecx), %xmm2
++	movdqa	%xmm2, %xmm4
++
++	palignr	$15, %xmm3, %xmm2
++
++	pcmpeqb	%xmm1, %xmm0
++	pcmpeqb	%xmm2, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	sub	$0xffff, %esi
++	jnz	L(exit)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$16, %ebp
++	lea	-16(%ebp), %ebp
++	jbe	L(more8byteseq)
++#endif
++	add	$16, %ecx
++	movdqa	%xmm4, %xmm3
++	jmp	L(loop_ashr_15)
++
++	.p2align 4
++L(nibble_ashr_15):
++	pcmpeqb	%xmm3, %xmm0
++	pmovmskb %xmm0, %esi
++	test	$0x8000, %esi
++	jnz	L(ashr_15_exittail)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$1, %ebp
++	jbe	L(ashr_15_exittail)
++#endif
++	pxor	%xmm0, %xmm0
++	sub	$0x1000, %edi
++	jmp	L(gobble_ashr_15)
++
++	.p2align 4
++L(ashr_15_exittail):
++	movdqa	(%eax, %ecx), %xmm1
++	psrldq	$15, %xmm0
++	psrldq	$15, %xmm3
++	jmp	L(aftertail)
++
++	.p2align 4
++L(aftertail):
++	pcmpeqb	%xmm3, %xmm1
++	psubb	%xmm0, %xmm1
++	pmovmskb %xmm1, %esi
++	not	%esi
++L(exit):
++	mov	%ebx, %edi
++	and	$0x1f, %edi
++	lea	-16(%edi, %ecx), %edi
++L(less32bytes):
++	add	%edi, %edx
++	add	%ecx, %eax
++	test	$0x20, %ebx
++	jz	L(ret2)
++	xchg	%eax, %edx
++
++	.p2align 4
++L(ret2):
++	mov	%esi, %ecx
++	POP	(%esi)
++	POP	(%edi)
++	POP	(%ebx)
++L(less16bytes):
++	test	%cl, %cl
++	jz	L(2next_8_bytes)
++
++	test	$0x01, %cl
++	jnz	L(Byte0)
++
++	test	$0x02, %cl
++	jnz	L(Byte1)
++
++	test	$0x04, %cl
++	jnz	L(Byte2)
++
++	test	$0x08, %cl
++	jnz	L(Byte3)
++
++	test	$0x10, %cl
++	jnz	L(Byte4)
++
++	test	$0x20, %cl
++	jnz	L(Byte5)
++
++	test	$0x40, %cl
++	jnz	L(Byte6)
++#ifdef USE_AS_STRNCMP
++	cmp	$7, %ebp
++	jbe	L(eq)
++#endif
++
++	movzx	7(%eax), %ecx
++	movzx	7(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte0):
++#ifdef USE_AS_STRNCMP
++	cmp	$0, %ebp
++	jbe	L(eq)
++#endif
++	movzx	(%eax), %ecx
++	movzx	(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte1):
++#ifdef USE_AS_STRNCMP
++	cmp	$1, %ebp
++	jbe	L(eq)
++#endif
++	movzx	1(%eax), %ecx
++	movzx	1(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte2):
++#ifdef USE_AS_STRNCMP
++	cmp	$2, %ebp
++	jbe	L(eq)
++#endif
++	movzx	2(%eax), %ecx
++	movzx	2(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte3):
++#ifdef USE_AS_STRNCMP
++	cmp	$3, %ebp
++	jbe	L(eq)
++#endif
++	movzx	3(%eax), %ecx
++	movzx	3(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte4):
++#ifdef USE_AS_STRNCMP
++	cmp	$4, %ebp
++	jbe	L(eq)
++#endif
++	movzx	4(%eax), %ecx
++	movzx	4(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte5):
++#ifdef USE_AS_STRNCMP
++	cmp	$5, %ebp
++	jbe	L(eq)
++#endif
++	movzx	5(%eax), %ecx
++	movzx	5(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(Byte6):
++#ifdef USE_AS_STRNCMP
++	cmp	$6, %ebp
++	jbe	L(eq)
++#endif
++	movzx	6(%eax), %ecx
++	movzx	6(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(2next_8_bytes):
++	add	$8, %eax
++	add	$8, %edx
++#ifdef USE_AS_STRNCMP
++	cmp	$8, %ebp
++	lea	-8(%ebp), %ebp
++	jbe	L(eq)
++#endif
++
++	test	$0x01, %ch
++	jnz	L(Byte0)
++
++	test	$0x02, %ch
++	jnz	L(Byte1)
++
++	test	$0x04, %ch
++	jnz	L(Byte2)
++
++	test	$0x08, %ch
++	jnz	L(Byte3)
++
++	test	$0x10, %ch
++	jnz	L(Byte4)
++
++	test	$0x20, %ch
++	jnz	L(Byte5)
++
++	test	$0x40, %ch
++	jnz	L(Byte6)
++
++#ifdef USE_AS_STRNCMP
++	cmp	$7, %ebp
++	jbe	L(eq)
++#endif
++	movzx	7(%eax), %ecx
++	movzx	7(%edx), %eax
++
++	sub	%ecx, %eax
++	RETURN
++
++L(neq):
++	mov	$1, %eax
++	ja	L(neq_bigger)
++	neg	%eax
++L(neq_bigger):
++#ifdef USE_AS_STRNCMP
++	POP	(%ebp)
++#endif
++	ret
++
++#ifdef USE_AS_STRNCMP
++	.p2align 4
++	cfi_restore_state
++L(more8byteseq):
++	POP	(%esi)
++	POP	(%edi)
++	POP	(%ebx)
++#endif
++
++L(eq):
++
++#ifdef USE_AS_STRNCMP
++	POP	(%ebp)
++#endif
++	xorl	%eax, %eax
++	ret
++
++#ifdef USE_AS_STRNCMP
++	.p2align 4
++	CFI_PUSH (%ebp)
++L(less16bytes_sncmp):
++	test	%ebp, %ebp
++	jz	L(eq)
++
++	movzbl	(%eax), %ecx
++	cmpb	%cl, (%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$1, %ebp
++	je	L(eq)
++
++	movzbl	1(%eax), %ecx
++	cmpb	%cl, 1(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$2, %ebp
++	je	L(eq)
++
++	movzbl	2(%eax), %ecx
++	cmpb	%cl, 2(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$3, %ebp
++	je	L(eq)
++
++	movzbl	3(%eax), %ecx
++	cmpb	%cl, 3(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$4, %ebp
++	je	L(eq)
++
++	movzbl	4(%eax), %ecx
++	cmpb	%cl, 4(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$5, %ebp
++	je	L(eq)
++
++	movzbl	5(%eax), %ecx
++	cmpb	%cl, 5(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$6, %ebp
++	je	L(eq)
++
++	movzbl	6(%eax), %ecx
++	cmpb	%cl, 6(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$7, %ebp
++	je	L(eq)
++
++	movzbl	7(%eax), %ecx
++	cmpb	%cl, 7(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++
++	cmp	$8, %ebp
++	je	L(eq)
++
++	movzbl	8(%eax), %ecx
++	cmpb	%cl, 8(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$9, %ebp
++	je	L(eq)
++
++	movzbl	9(%eax), %ecx
++	cmpb	%cl, 9(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$10, %ebp
++	je	L(eq)
++
++	movzbl	10(%eax), %ecx
++	cmpb	%cl, 10(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$11, %ebp
++	je	L(eq)
++
++	movzbl	11(%eax), %ecx
++	cmpb	%cl, 11(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++
++	cmp	$12, %ebp
++	je	L(eq)
++
++	movzbl	12(%eax), %ecx
++	cmpb	%cl, 12(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$13, %ebp
++	je	L(eq)
++
++	movzbl	13(%eax), %ecx
++	cmpb	%cl, 13(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$14, %ebp
++	je	L(eq)
++
++	movzbl	14(%eax), %ecx
++	cmpb	%cl, 14(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	cmp	$15, %ebp
++	je	L(eq)
++
++	movzbl	15(%eax), %ecx
++	cmpb	%cl, 15(%edx)
++	jne	L(neq)
++	test	%cl, %cl
++	je	L(eq)
++
++	POP	(%ebp)
++	xor	%eax, %eax
++	ret
++#endif
++
++END (STRCMP)
++
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/strcmp.S b/sysdeps/i386/i686/multiarch/strcmp.S
+new file mode 100644
+index 0000000..7136d47
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strcmp.S
+@@ -0,0 +1,115 @@
++/* Multiple versions of strcmp
++   Copyright (C) 2010 Free Software Foundation, Inc.
++   Contributed by Intel Corporation.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#include <sysdep.h>
++#include <init-arch.h>
++
++#ifndef USE_AS_STRNCMP
++# define STRCMP			strcmp
++# define __GI_STRCMP		__GI_strcmp
++# define __STRCMP_IA32		__strcmp_ia32
++# define __STRCMP_SSSE3		__strcmp_ssse3
++# define __STRCMP_SSE4_2	__strcmp_sse4_2
++#else
++# define STRCMP			strncmp
++# define __GI_STRCMP		__GI_strncmp
++# define __STRCMP_IA32		__strncmp_ia32
++# define __STRCMP_SSSE3		__strncmp_ssse3
++# define __STRCMP_SSE4_2	__strncmp_sse4_2
++#endif
++
++/* Define multiple versions only for the definition in libc.  Don't
++   define multiple versions for strncmp in static library since we
++   need strncmp before the initialization happened.  */
++#if (defined SHARED || !defined USE_AS_STRNCMP) && !defined NOT_IN_libc
++# ifdef SHARED
++	.section	.gnu.linkonce.t.__i686.get_pc_thunk.bx,"ax",@progbits
++	.globl	__i686.get_pc_thunk.bx
++	.hidden	__i686.get_pc_thunk.bx
++	.p2align 4
++	.type	__i686.get_pc_thunk.bx,@function
++__i686.get_pc_thunk.bx:
++	movl	(%esp), %ebx
++	ret
++
++	.text
++ENTRY(STRCMP)
++	.type	STRCMP, @gnu_indirect_function
++	pushl	%ebx
++	cfi_adjust_cfa_offset (4)
++	cfi_rel_offset (ebx, 0)
++	call	__i686.get_pc_thunk.bx
++	addl	$_GLOBAL_OFFSET_TABLE_, %ebx
++	cmpl	$0, KIND_OFFSET+__cpu_features@GOTOFF(%ebx)
++	jne	1f
++	call	__init_cpu_features
++1:	leal	__STRCMP_IA32@GOTOFF(%ebx), %eax
++	testl	$bit_SSSE3, CPUID_OFFSET+index_SSSE3+__cpu_features@GOTOFF(%ebx)
++	jz	2f
++	leal	__STRCMP_SSSE3@GOTOFF(%ebx), %eax
++	testl	$bit_SSE4_2, CPUID_OFFSET+index_SSE4_2+__cpu_features@GOTOFF(%ebx)
++	jz	2f
++	leal	__STRCMP_SSE4_2@GOTOFF(%ebx), %eax
++2:	popl	%ebx
++	cfi_adjust_cfa_offset (-4)
++	cfi_restore (ebx)
++	ret
++END(STRCMP)
++# else
++	.text
++ENTRY(STRCMP)
++	.type	STRCMP, @gnu_indirect_function
++	cmpl	$0, KIND_OFFSET+__cpu_features
++	jne	1f
++	call	__init_cpu_features
++1:	leal	__STRCMP_IA32, %eax
++	testl	$bit_SSSE3, CPUID_OFFSET+index_SSSE3+__cpu_features
++	jz	2f
++	leal	__STRCMP_SSSE3, %eax
++	testl	$bit_SSE4_2, CPUID_OFFSET+index_SSE4_2+__cpu_features
++	jz	2f
++	leal	__STRCMP_SSE4_2, %eax
++2:	ret
++END(STRCMP)
++# endif
++
++# undef ENTRY
++# define ENTRY(name) \
++	.type __STRCMP_IA32, @function; \
++	.p2align 4; \
++	__STRCMP_IA32: cfi_startproc; \
++	CALL_MCOUNT
++# undef END
++# define END(name) \
++	cfi_endproc; .size __STRCMP_IA32, .-__STRCMP_IA32
++
++# ifdef SHARED
++#  undef libc_hidden_builtin_def
++/* IFUNC doesn't work with the hidden functions in shared library since
++   they will be called without setting up EBX needed for PLT which is
++   used by IFUNC.  */
++#  define libc_hidden_builtin_def(name) \
++	.globl __GI_STRCMP; __GI_STRCMP = __STRCMP_IA32
++# endif
++#endif
++
++#ifndef USE_AS_STRNCMP
++# include "../strcmp.S"
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/strncmp-c.c b/sysdeps/i386/i686/multiarch/strncmp-c.c
+new file mode 100644
+index 0000000..cc059da
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strncmp-c.c
+@@ -0,0 +1,8 @@
++#ifdef SHARED
++# define STRNCMP __strncmp_ia32
++# undef libc_hidden_builtin_def
++# define libc_hidden_builtin_def(name)  \
++    __hidden_ver1 (__strncmp_ia32, __GI_strncmp, __strncmp_ia32);
++#endif
++
++#include "string/strncmp.c"
+diff --git a/sysdeps/i386/i686/multiarch/strncmp-sse4.S b/sysdeps/i386/i686/multiarch/strncmp-sse4.S
+new file mode 100644
+index 0000000..cf14dfa
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strncmp-sse4.S
+@@ -0,0 +1,5 @@
++#ifdef SHARED
++# define USE_AS_STRNCMP
++# define STRCMP	__strncmp_sse4_2
++# include "strcmp-sse4.S"
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/strncmp-ssse3.S b/sysdeps/i386/i686/multiarch/strncmp-ssse3.S
+new file mode 100644
+index 0000000..536c868
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strncmp-ssse3.S
+@@ -0,0 +1,5 @@
++#ifdef SHARED
++# define USE_AS_STRNCMP
++# define STRCMP	__strncmp_ssse3
++# include "strcmp-ssse3.S"
++#endif
+diff --git a/sysdeps/i386/i686/multiarch/strncmp.S b/sysdeps/i386/i686/multiarch/strncmp.S
+new file mode 100644
+index 0000000..b681431
+--- /dev/null
++++ b/sysdeps/i386/i686/multiarch/strncmp.S
+@@ -0,0 +1,3 @@
++#define USE_AS_STRNCMP
++#define STRCMP	strncmp
++#include "strcmp.S"

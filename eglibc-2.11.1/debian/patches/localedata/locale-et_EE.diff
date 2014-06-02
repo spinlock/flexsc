@@ -1,0 +1,19 @@
+2010-01-05  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* locales/et_EE: Change first_weekday and first_workday to 2.
+
+diff --git a/localedata/locales/et_EE b/localedata/locales/et_EE
+index efec335..697d3a7 100644
+--- a/localedata/locales/et_EE
++++ b/localedata/locales/et_EE
+@@ -2197,8 +2197,8 @@ date_fmt	"<U0025><U0061><U0020><U0025><U0062><U0020><U0025><U0065>/
+ <U0020><U0025><U0048><U003A><U0025><U004D><U003A><U0025><U0053><U0020>/
+ <U0025><U005A><U0020><U0025><U0059>"
+ week    7;19971130;4
+-first_weekday 1
+-first_workday 1
++first_weekday 2
++first_workday 2
+ END LC_TIME
+ 
+ LC_MESSAGES

@@ -1,0 +1,17 @@
+---
+ nscd/nscd.conf |    4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+--- a/nscd/nscd.conf
++++ b/nscd/nscd.conf
+@@ -60,7 +60,9 @@
+ 	max-db-size		group		33554432
+ 	auto-propagate		group		yes
+ 
+-	enable-cache		hosts		yes
++# hosts caching is broken with gethostby* calls, hence is now disabled
++# per default.  See /usr/share/doc/nscd/NEWS.Debian.
++	enable-cache		hosts		no
+ 	positive-time-to-live	hosts		3600
+ 	negative-time-to-live	hosts		20
+ 	suggested-size		hosts		211

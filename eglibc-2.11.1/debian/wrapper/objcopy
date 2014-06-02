@@ -1,0 +1,11 @@
+#!/bin/sh
+
+case " $* " in
+*" --only-keep-debug "*".so"*)
+    exec /usr/bin/objcopy -R .debug_info -R .debug_aranges -R .debug_pubnames \
+	-R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges \
+	-R .debug_loc -R .comment -R .note "$@"
+    ;;
+esac
+
+exec /usr/bin/objcopy "$@"

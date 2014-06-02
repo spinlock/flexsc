@@ -1,0 +1,11 @@
+# FIXME: someday we may need to handle installing into non-lib.
+debian/tmp-libc/lib/ld*.so* lib
+debian/tmp-libc/lib/libm-*.so* lib
+debian/tmp-libc/lib/libm.so* lib
+debian/tmp-libc/lib/libdl*.so* lib
+debian/tmp-libc/lib/libresolv*.so* lib
+debian/tmp-libc/lib/libc-*.so* lib
+debian/tmp-libc/lib/libc.so* lib
+debian/tmp-libc/lib/libutil* lib
+debian/tmp-libc/lib/libcrypt* lib
+debian/tmp-libc/lib/librt*.so* lib

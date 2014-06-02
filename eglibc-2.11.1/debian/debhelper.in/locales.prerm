@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge)
+    	if ! [ -f /usr/lib/locales-all/supported.tar.lzma ] ; then
+		# If locales-all is not installed, clean the locales
+		rm -f /usr/lib/locale/locale-archive
+	fi
+	;;
+    *)
+    	;;
+esac
+
+#DEBHELPER#
+
+exit 0

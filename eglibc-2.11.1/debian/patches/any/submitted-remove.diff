@@ -1,0 +1,25 @@
+Only Linux' unlink() uses EISDIR when the entry to remove() is a directory
+Reported by Ludovic Courtès
+
+2010-02-23  Samuel Thibault  <samuel.thibault@ens-lyon.org>
+
+	* sysdeps/posix/remove.c (remove): Check __unlink()'s result against
+	EPERM too.
+
+---
+ remove.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sysdeps/posix/remove.c b/sysdeps/posix/remove.c
+index c44af92..61fa5f3 100644
+--- a/sysdeps/posix/remove.c
++++ b/sysdeps/posix/remove.c
+@@ -28,7 +28,7 @@ remove (file)
+   /* First try to unlink since this is more frequently the necessary action. */
+   if (__unlink (file) != 0
+       /* If it is indeed a directory...  */
+-      && (errno != EISDIR
++      && ((errno != EISDIR && errno != EPERM)
+ 	  /* ...try to remove it.  */
+ 	  || __rmdir (file) != 0))
+     /* Cannot remove the object for whatever reason.  */

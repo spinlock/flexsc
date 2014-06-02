@@ -1,0 +1,78 @@
+2007-10-28  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* bits/libc-lock.h (__libc_once_get): New definiton.
+	* linuxthreads/sysdeps/pthread/bits/libc-lock.h: Likewise
+	* nptl/sysdeps/pthread/bits/libc-lock.h: Likewise.
+	* sysdeps/mach/bits/libc-lock.h: Likewise.
+	* sysdeps/mach/hurd/bits/libc-lock.h: Likewise.
+	* sysdeps/posix/getaddrinfo.c (getaddrinfo): Use __libc_once_get
+	  instead of using implementational details.
+
+---
+ bits/libc-lock.h                              |    3 +++
+ linuxthreads/sysdeps/pthread/bits/libc-lock.h |    3 +++
+ nptl/sysdeps/pthread/bits/libc-lock.h         |    3 +++
+ sysdeps/mach/hurd/bits/libc-lock.h            |    4 ++++
+ sysdeps/posix/getaddrinfo.c                   |    2 +-
+ 5 files changed, 14 insertions(+), 1 deletion(-)
+
+--- a/bits/libc-lock.h
++++ b/bits/libc-lock.h
+@@ -98,6 +98,9 @@
+     }									      \
+   } while (0)
+ 
++/* Get once control variable.  */
++#define __libc_once_get(ONCE_CONTROL) \
++  ((ONCE_CONTROL) == 1)
+ 
+ /* Start a critical region with a cleanup function */
+ #define __libc_cleanup_region_start(DOIT, FCT, ARG)			    \
+--- a/linuxthreads/sysdeps/pthread/bits/libc-lock.h
++++ b/linuxthreads/sysdeps/pthread/bits/libc-lock.h
+@@ -242,6 +242,9 @@
+     }									      \
+   } while (0)
+ 
++/* Get once control variable.  */
++#define __libc_once_get(ONCE_CONTROL) \
++  ((ONCE_CONTROL) != PTHREAD_ONCE_INIT)
+ 
+ /* Start critical region with cleanup.  */
+ #define __libc_cleanup_region_start(DOIT, FCT, ARG) \
+--- a/nptl/sysdeps/pthread/bits/libc-lock.h
++++ b/nptl/sysdeps/pthread/bits/libc-lock.h
+@@ -377,6 +377,9 @@
+     }									      \
+   } while (0)
+ 
++/* Get once control variable.  */
++#define __libc_once_get(ONCE_CONTROL) \
++  ((ONCE_CONTROL) != PTHREAD_ONCE_INIT)
+ 
+ /* Note that for I/O cleanup handling we are using the old-style
+    cancel handling.  It does not have to be integrated with C++ snce
+--- a/sysdeps/mach/hurd/bits/libc-lock.h
++++ b/sysdeps/mach/hurd/bits/libc-lock.h
+@@ -188,6 +188,10 @@
+     __libc_lock_unlock (ONCE_CONTROL.lock);				      \
+   } while (0)
+ 
++/* Get once control variable.  */
++#define __libc_once_get(ONCE_CONTROL) \
++  (!ONCE_CONTROL.done)
++
+ #ifdef _LIBC
+ /* We need portable names for some functions.  E.g., when they are
+    used as argument to __libc_cleanup_region_start.  */
+--- a/sysdeps/posix/getaddrinfo.c
++++ b/sysdeps/posix/getaddrinfo.c
+@@ -2337,7 +2337,7 @@
+ 	  __libc_lock_define_initialized (static, lock);
+ 
+ 	  __libc_lock_lock (lock);
+-	  if (old_once && gaiconf_reload_flag)
++	  if (__libc_once_get(old_once) && gaiconf_reload_flag)
+ 	    gaiconf_reload ();
+ 	  qsort_r (order, nresults, sizeof (order[0]), rfc3484_sort, &src);
+ 	  __libc_lock_unlock (lock);

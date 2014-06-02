@@ -1,0 +1,16 @@
+Description: pro-actively disable LD_AUDIT for setuid binaries.
+Author: Kees Cook <kees@ubuntu.com>
+
+Index: eglibc-2.12.1/elf/rtld.c
+===================================================================
+--- eglibc-2.12.1.orig/elf/rtld.c	2010-10-21 12:48:16.429357188 -0700
++++ eglibc-2.12.1/elf/rtld.c	2010-10-21 12:48:36.260524091 -0700
+@@ -2488,7 +2488,7 @@
+   while ((p = (strsep) (&str, ":")) != NULL)
+     if (p[0] != '\0'
+ 	&& (__builtin_expect (! INTUSE(__libc_enable_secure), 1)
+-	    || strchr (p, '/') == NULL))
++	))
+       {
+ 	/* This is using the local malloc, not the system malloc.  The
+ 	   memory can never be freed.  */

@@ -1,0 +1,757 @@
+SVN update of svn://svn.eglibc.org/branches/eglibc-2_11 from revision 9672
+
+--- a/include/link.h	(revision 9672)
++++ b/include/link.h	(revision 9744)
+@@ -1,6 +1,6 @@
+ /* Data structure for communication from the run-time dynamic linker for
+    loaded ELF shared objects.
+-   Copyright (C) 1995-2006, 2007 Free Software Foundation, Inc.
++   Copyright (C) 1995-2006, 2007, 2009 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -180,7 +180,6 @@
+     unsigned int l_need_tls_init:1; /* Nonzero if GL(dl_init_static_tls)
+ 				       should be called on this link map
+ 				       when relocation finishes.  */
+-    unsigned int l_used:1;	/* Nonzero if the DSO is used.  */
+     unsigned int l_auditing:1;	/* Nonzero if the DSO is used in auditing.  */
+     unsigned int l_audit_any_plt:1; /* Nonzero if at least one audit module
+ 				       is interested in the PLT interception.*/
+@@ -239,13 +238,16 @@
+     struct link_map **l_initfini;
+ 
+     /* List of the dependencies introduced through symbol binding.  */
+-    unsigned int l_reldepsmax;
+     struct link_map_reldeps
+       {
+ 	unsigned int act;
+ 	struct link_map *list[];
+       } *l_reldeps;
++    unsigned int l_reldepsmax;
+ 
++    /* Nonzero if the DSO is used.  */
++    unsigned int l_used;
++
+     /* Various flag words.  */
+     ElfW(Word) l_feature_1;
+     ElfW(Word) l_flags_1;
+--- a/ChangeLog	(revision 9672)
++++ b/ChangeLog	(revision 9744)
+@@ -1,3 +1,34 @@
++2010-01-14  Ulrich Drepper  <drepper@redhat.com>
++
++	[BZ #11127]
++	* posix/regcomp.c (alc_eclosure_iter): Do not ignore
++	re_node_set_insert failure; return REG_ESPACE.
++	Patch by Paul Eggert.
++
++2010-01-06  Ulrich Drepper  <drepper@redhat.com>
++
++	* dirent/dirent.h: Fix typo in feature selection macro use.
++
++2009-12-15  Ulrich Drepper  <drepper@redhat.com>
++
++	* include/link.h (struct link_map): Move l_used into its own word.
++	* elf/dl-lookup.c (_dl_lookup_symbol_x): Only update l_used when it is
++	still zero.
++	* elf/dl-object.c (_dl_new_object): Set dl_used if we know it is
++	never really used.
++
++2009-12-10  Ulrich Drepper  <drepper@redhat.com>
++
++	[BZ #11000]
++	* nis/nss_nis/nis-hosts.c (_nss_nis_gethostbyname4_r): Always set
++	*herrnop before returning.
++	* nis/nss_nisplus/nisplus-hosts.c (internal_gethostbyname2_r):
++	Likewise.
++	* nss/nss_files/files-hosts.c (_nss_files_gethostbyname4_r): Handle
++	TRYAGAIN errors separately.
++	* sysdeps/posix/getaddrinfo.c (gaih_inet): Fix error handling of
++	*name4_r after functions.
++
+ 2009-11-24  Ulrich Drepper  <drepper@redhat.com>
+ 
+ 	* sysdeps/unix/grantpt.c (grantpt): Use CLOSE_ALL_FDS is available
+--- a/sysdeps/posix/getaddrinfo.c	(revision 9672)
++++ b/sysdeps/posix/getaddrinfo.c	(revision 9744)
+@@ -719,13 +719,8 @@
+ 		      if (status != NSS_STATUS_TRYAGAIN
+ 			  || rc != ERANGE || herrno != NETDB_INTERNAL)
+ 			{
+-			  if (herrno == NETDB_INTERNAL)
+-			    {
+-			      __set_h_errno (herrno);
+-			      _res.options = old_res_options;
+-			      return -EAI_SYSTEM;
+-			    }
+-			  if (herrno == TRY_AGAIN)
++			  if (status == NSS_STATUS_TRYAGAIN
++			      && herrno == TRY_AGAIN)
+ 			    no_data = EAI_AGAIN;
+ 			  else
+ 			    no_data = herrno == NO_DATA;
+--- a/nss/nss_files/files-hosts.c	(revision 9672)
++++ b/nss/nss_files/files-hosts.c	(revision 9744)
+@@ -423,6 +423,11 @@
+       if (! keep_stream)
+ 	internal_endent ();
+     }
++  else if (status == NSS_STATUS_TRYAGAIN)
++    {
++      *errnop = errno;
++      *herrnop = TRY_AGAIN;
++    }
+   else
+     {
+       *errnop = errno;
+--- a/dirent/dirent.h	(revision 9672)
++++ b/dirent/dirent.h	(revision 9744)
+@@ -1,4 +1,4 @@
+-/* Copyright (C) 1991-2000, 2003-2005, 2009 Free Software Foundation, Inc.
++/* Copyright (C) 1991-2000,2003-2005,2009,2010 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -218,7 +218,7 @@
+ extern long int telldir (DIR *__dirp) __THROW __nonnull ((1));
+ #endif
+ 
+-#if defined __USE_BSD || defined __USE_MISC || defined __XOPEN_2K8
++#if defined __USE_BSD || defined __USE_MISC || defined __XOPEN2K8
+ 
+ /* Return the file descriptor used by DIRP.  */
+ extern int dirfd (DIR *__dirp) __THROW __nonnull ((1));
+--- a/posix/regcomp.c	(revision 9672)
++++ b/posix/regcomp.c	(revision 9744)
+@@ -1,6 +1,5 @@
+ /* Extended regular expression matching and search library.
+-   Copyright (C) 2002,2003,2004,2005,2006,2007,2009
+-   Free Software Foundation, Inc.
++   Copyright (C) 2002-2007,2009,2010 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+    Contributed by Isamu Hasegawa <isamu@yamato.ibm.com>.
+ 
+@@ -622,7 +621,7 @@
+ 	    re_dfastate_t *state = entry->array[j];
+ 	    free_state (state);
+ 	  }
+-        re_free (entry->array);
++	re_free (entry->array);
+       }
+   re_free (dfa->state_table);
+ #ifdef RE_ENABLE_I18N
+@@ -1076,8 +1075,8 @@
+ 	  }
+ 	break;
+       case OP_PERIOD:
+-        has_period = 1;
+-        break;
++	has_period = 1;
++	break;
+       case OP_BACK_REF:
+       case OP_ALT:
+       case END_OF_RE:
+@@ -1090,7 +1089,7 @@
+       case SIMPLE_BRACKET:
+ 	/* Just double check.  The non-ASCII range starts at 0x80.  */
+ 	assert (0x80 % BITSET_WORD_BITS == 0);
+-        for (i = 0x80 / BITSET_WORD_BITS; i < BITSET_WORDS; ++i)
++	for (i = 0x80 / BITSET_WORD_BITS; i < BITSET_WORDS; ++i)
+ 	  if (dfa->nodes[node].opr.sbcset[i])
+ 	    return;
+ 	break;
+@@ -1171,7 +1170,7 @@
+     {
+       dfa->inveclosures = re_malloc (re_node_set, dfa->nodes_len);
+       if (BE (dfa->inveclosures == NULL, 0))
+-        return REG_ESPACE;
++	return REG_ESPACE;
+       ret = calc_inveclosure (dfa);
+     }
+ 
+@@ -1193,16 +1192,16 @@
+ 	 if that's the only child).  */
+       while (node->left || node->right)
+ 	if (node->left)
+-          node = node->left;
+-        else
+-          node = node->right;
++	  node = node->left;
++	else
++	  node = node->right;
+ 
+       do
+ 	{
+ 	  reg_errcode_t err = fn (extra, node);
+ 	  if (BE (err != REG_NOERROR, 0))
+ 	    return err;
+-          if (node->parent == NULL)
++	  if (node->parent == NULL)
+ 	    return REG_NOERROR;
+ 	  prev = node;
+ 	  node = node->parent;
+@@ -1236,7 +1235,7 @@
+ 	      prev = node;
+ 	      node = node->parent;
+ 	      if (!node)
+-	        return REG_NOERROR;
++		return REG_NOERROR;
+ 	    }
+ 	  node = node->right;
+ 	}
+@@ -1259,13 +1258,13 @@
+     }
+ 
+   else if (node->token.type == SUBEXP
+-           && node->left && node->left->token.type == SUBEXP)
++	   && node->left && node->left->token.type == SUBEXP)
+     {
+       int other_idx = node->left->token.opr.idx;
+ 
+       node->left = node->left->left;
+       if (node->left)
+-        node->left->parent = node;
++	node->left->parent = node;
+ 
+       dfa->subexp_map[other_idx] = dfa->subexp_map[node->token.opr.idx];
+       if (other_idx < BITSET_WORD_BITS)
+@@ -1350,9 +1349,9 @@
+       node->first = node;
+       node->node_idx = re_dfa_add_node (dfa, node->token);
+       if (BE (node->node_idx == -1, 0))
+-        return REG_ESPACE;
++	return REG_ESPACE;
+       if (node->token.type == ANCHOR)
+-        dfa->nodes[node->node_idx].constraint = node->token.opr.ctx_type;
++	dfa->nodes[node->node_idx].constraint = node->token.opr.ctx_type;
+     }
+   return REG_NOERROR;
+ }
+@@ -1374,7 +1373,7 @@
+       if (node->left)
+ 	node->left->next = node->next;
+       if (node->right)
+-        node->right->next = node->next;
++	node->right->next = node->next;
+       break;
+     }
+   return REG_NOERROR;
+@@ -1653,9 +1652,10 @@
+ calc_eclosure_iter (re_node_set *new_set, re_dfa_t *dfa, int node, int root)
+ {
+   reg_errcode_t err;
+-  int i, incomplete;
++  int i;
+   re_node_set eclosure;
+-  incomplete = 0;
++  int ret;
++  int incomplete = 0;
+   err = re_node_set_alloc (&eclosure, dfa->edests[node].nelem + 1);
+   if (BE (err != REG_NOERROR, 0))
+     return err;
+@@ -1710,8 +1710,10 @@
+ 	  }
+       }
+ 
+-  /* Epsilon closures include itself.  */
+-  re_node_set_insert (&eclosure, node);
++  /* An epsilon closure includes itself.  */
++  ret = re_node_set_insert (&eclosure, node);
++  if (BE (ret < 0, 0))
++    return REG_ESPACE;
+   if (incomplete && !root)
+     dfa->eclosures[node].nelem = 0;
+   else
+@@ -2295,7 +2297,7 @@
+ 	  && dfa->word_ops_used == 0)
+ 	init_word_char (dfa);
+       if (token->opr.ctx_type == WORD_DELIM
+-          || token->opr.ctx_type == NOT_WORD_DELIM)
++	  || token->opr.ctx_type == NOT_WORD_DELIM)
+ 	{
+ 	  bin_tree_t *tree_first, *tree_last;
+ 	  if (token->opr.ctx_type == WORD_DELIM)
+@@ -2303,13 +2305,13 @@
+ 	      token->opr.ctx_type = WORD_FIRST;
+ 	      tree_first = create_token_tree (dfa, NULL, NULL, token);
+ 	      token->opr.ctx_type = WORD_LAST;
+-            }
+-          else
+-            {
++	    }
++	  else
++	    {
+ 	      token->opr.ctx_type = INSIDE_WORD;
+ 	      tree_first = create_token_tree (dfa, NULL, NULL, token);
+ 	      token->opr.ctx_type = INSIDE_NOTWORD;
+-            }
++	    }
+ 	  tree_last = create_token_tree (dfa, NULL, NULL, token);
+ 	  tree = create_tree (dfa, tree_first, tree_last, OP_ALT);
+ 	  if (BE (tree_first == NULL || tree_last == NULL || tree == NULL, 0))
+@@ -2420,7 +2422,7 @@
+     {
+       tree = parse_reg_exp (regexp, preg, token, syntax, nest, err);
+       if (BE (*err == REG_NOERROR && token->type != OP_CLOSE_SUBEXP, 0))
+-        *err = REG_EPAREN;
++	*err = REG_EPAREN;
+       if (BE (*err != REG_NOERROR, 0))
+ 	return NULL;
+     }
+@@ -2551,11 +2553,11 @@
+       elem = duplicate_tree (elem, dfa);
+       tree = create_tree (dfa, tree, elem, CONCAT);
+       if (BE (elem == NULL || tree == NULL, 0))
+-        goto parse_dup_op_espace;
++	goto parse_dup_op_espace;
+ 
+       tree = create_tree (dfa, tree, NULL, OP_ALT);
+       if (BE (tree == NULL, 0))
+-        goto parse_dup_op_espace;
++	goto parse_dup_op_espace;
+     }
+ 
+   if (old_tree)
+@@ -2636,9 +2638,9 @@
+        no MBCSET if dfa_mb_cur_max (dfa) == 1.  */
+     if (mbcset)
+       {
+-        /* Check the space of the arrays.  */
+-        if (BE (*range_alloc == mbcset->nranges, 0))
+-          {
++	/* Check the space of the arrays.  */
++	if (BE (*range_alloc == mbcset->nranges, 0))
++	  {
+ 	    /* There is not enough space, need realloc.  */
+ 	    wchar_t *new_array_start, *new_array_end;
+ 	    int new_nranges;
+@@ -2648,9 +2650,9 @@
+ 	    /* Use realloc since mbcset->range_starts and mbcset->range_ends
+ 	       are NULL if *range_alloc == 0.  */
+ 	    new_array_start = re_realloc (mbcset->range_starts, wchar_t,
+-				          new_nranges);
++					  new_nranges);
+ 	    new_array_end = re_realloc (mbcset->range_ends, wchar_t,
+-				        new_nranges);
++					new_nranges);
+ 
+ 	    if (BE (new_array_start == NULL || new_array_end == NULL, 0))
+ 	      return REG_ESPACE;
+@@ -2658,10 +2660,10 @@
+ 	    mbcset->range_starts = new_array_start;
+ 	    mbcset->range_ends = new_array_end;
+ 	    *range_alloc = new_nranges;
+-          }
++	  }
+ 
+-        mbcset->range_starts[mbcset->nranges] = start_wc;
+-        mbcset->range_ends[mbcset->nranges++] = end_wc;
++	mbcset->range_starts[mbcset->nranges] = start_wc;
++	mbcset->range_ends[mbcset->nranges++] = end_wc;
+       }
+ 
+     /* Build the table for single byte characters.  */
+@@ -2888,8 +2890,8 @@
+ 	 build below suffices. */
+       if (nrules > 0 || dfa_mb_cur_max (dfa) > 1)
+ 	{
+-          /* Check the space of the arrays.  */
+-          if (BE (*range_alloc == mbcset->nranges, 0))
++	  /* Check the space of the arrays.  */
++	  if (BE (*range_alloc == mbcset->nranges, 0))
+ 	    {
+ 	      /* There is not enough space, need realloc.  */
+ 	      uint32_t *new_array_start;
+@@ -2901,18 +2903,18 @@
+ 	      new_array_start = re_realloc (mbcset->range_starts, uint32_t,
+ 					    new_nranges);
+ 	      new_array_end = re_realloc (mbcset->range_ends, uint32_t,
+-				          new_nranges);
++					  new_nranges);
+ 
+ 	      if (BE (new_array_start == NULL || new_array_end == NULL, 0))
+-	        return REG_ESPACE;
++		return REG_ESPACE;
+ 
+ 	      mbcset->range_starts = new_array_start;
+ 	      mbcset->range_ends = new_array_end;
+ 	      *range_alloc = new_nranges;
+ 	    }
+ 
+-          mbcset->range_starts[mbcset->nranges] = start_collseq;
+-          mbcset->range_ends[mbcset->nranges++] = end_collseq;
++	  mbcset->range_starts[mbcset->nranges] = start_collseq;
++	  mbcset->range_ends[mbcset->nranges++] = end_collseq;
+ 	}
+ 
+       /* Build the table for single byte characters.  */
+@@ -3254,17 +3256,17 @@
+ 	 of having both SIMPLE_BRACKET and COMPLEX_BRACKET.  */
+       if (sbc_idx < BITSET_WORDS)
+ 	{
+-          /* Build a tree for simple bracket.  */
+-          br_token.type = SIMPLE_BRACKET;
+-          br_token.opr.sbcset = sbcset;
+-          work_tree = create_token_tree (dfa, NULL, NULL, &br_token);
+-          if (BE (work_tree == NULL, 0))
+-            goto parse_bracket_exp_espace;
++	  /* Build a tree for simple bracket.  */
++	  br_token.type = SIMPLE_BRACKET;
++	  br_token.opr.sbcset = sbcset;
++	  work_tree = create_token_tree (dfa, NULL, NULL, &br_token);
++	  if (BE (work_tree == NULL, 0))
++	    goto parse_bracket_exp_espace;
+ 
+-          /* Then join them by ALT node.  */
+-          work_tree = create_tree (dfa, work_tree, mbc_tree, OP_ALT);
+-          if (BE (work_tree == NULL, 0))
+-            goto parse_bracket_exp_espace;
++	  /* Then join them by ALT node.  */
++	  work_tree = create_tree (dfa, work_tree, mbc_tree, OP_ALT);
++	  if (BE (work_tree == NULL, 0))
++	    goto parse_bracket_exp_espace;
+ 	}
+       else
+ 	{
+@@ -3283,7 +3285,7 @@
+       br_token.opr.sbcset = sbcset;
+       work_tree = create_token_tree (dfa, NULL, NULL, &br_token);
+       if (BE (work_tree == NULL, 0))
+-        goto parse_bracket_exp_espace;
++	goto parse_bracket_exp_espace;
+     }
+   return work_tree;
+ 
+@@ -3838,7 +3840,7 @@
+ 	      node = node->parent;
+ 	      dup_node = dup_node->parent;
+ 	      if (!node)
+-	        return dup_root;
++		return dup_root;
+ 	    }
+ 	  node = node->right;
+ 	  p_new = &dup_node->right;
+--- a/nis/nss_nisplus/nisplus-hosts.c	(revision 9672)
++++ b/nis/nss_nisplus/nisplus-hosts.c	(revision 9744)
+@@ -1,4 +1,4 @@
+-/* Copyright (C) 1997-2003, 2005, 2006, 2008 Free Software Foundation, Inc.
++/* Copyright (C) 1997-2003, 2005, 2006, 2008, 2009 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+    Contributed by Thorsten Kukuk <kukuk@suse.de>, 1997.
+ 
+@@ -38,10 +38,10 @@
+ static u_long tablename_len;
+ 
+ #define NISENTRYVAL(idx, col, res) \
+-        (NIS_RES_OBJECT (res)[idx].EN_data.en_cols.en_cols_val[col].ec_value.ec_value_val)
++	(NIS_RES_OBJECT (res)[idx].EN_data.en_cols.en_cols_val[col].ec_value.ec_value_val)
+ 
+ #define NISENTRYLEN(idx, col, res) \
+-        (NIS_RES_OBJECT (res)[idx].EN_data.en_cols.en_cols_val[col].ec_value.ec_value_len)
++	(NIS_RES_OBJECT (res)[idx].EN_data.en_cols.en_cols_val[col].ec_value.ec_value_len)
+ 
+ /* Get implementation for some internal functions. */
+ #include <resolv/mapv4v6addr.h>
+@@ -287,15 +287,15 @@
+ 	      return NSS_STATUS_TRYAGAIN;
+ 	    }
+ 	  if (niserr2nss (result->status) != NSS_STATUS_SUCCESS)
+-            {
+-              enum nss_status retval = niserr2nss (result->status);
+-              if (retval == NSS_STATUS_TRYAGAIN)
+-                {
+-                  *herrnop = NETDB_INTERNAL;
+-                  *errnop = errno;
+-                }
+-              return retval;
+-            }
++	    {
++	      enum nss_status retval = niserr2nss (result->status);
++	      if (retval == NSS_STATUS_TRYAGAIN)
++		{
++		  *herrnop = NETDB_INTERNAL;
++		  *errnop = errno;
++		}
++	      return retval;
++	    }
+ 
+ 	}
+       else
+@@ -308,18 +308,18 @@
+ 	      return NSS_STATUS_TRYAGAIN;
+ 	    }
+ 	  if (niserr2nss (result->status) != NSS_STATUS_SUCCESS)
+-            {
+-              enum nss_status retval= niserr2nss (result->status);
++	    {
++	      enum nss_status retval= niserr2nss (result->status);
+ 
+ 	      nis_freeresult (result);
+ 	      result = saved_res;
+-              if (retval == NSS_STATUS_TRYAGAIN)
+-                {
+-                  *herrnop = NETDB_INTERNAL;
++	      if (retval == NSS_STATUS_TRYAGAIN)
++		{
++		  *herrnop = NETDB_INTERNAL;
+ 		  *errnop = errno;
+-                }
+-              return retval;
+-            }
++		}
++	      return retval;
++	    }
+ 	}
+ 
+       if (_res.options & RES_USE_INET6)
+@@ -330,13 +330,13 @@
+ 						buflen, errnop, 0);
+ 
+       if (parse_res == -1)
+-        {
++	{
+ 	  nis_freeresult (result);
+ 	  result = saved_res;
+-          *herrnop = NETDB_INTERNAL;
++	  *herrnop = NETDB_INTERNAL;
+ 	  *errnop = ERANGE;
+-          return NSS_STATUS_TRYAGAIN;
+-        }
++	  return NSS_STATUS_TRYAGAIN;
++	}
+       if (saved_res != NULL)
+ 	nis_freeresult (saved_res);
+ 
+@@ -435,6 +435,7 @@
+   if (result == NULL)
+     {
+       *errnop = ENOMEM;
++      *herrnop = NETDB_INTERNAL;
+       return NSS_STATUS_TRYAGAIN;
+     }
+ 
+@@ -444,10 +445,13 @@
+       if (retval == NSS_STATUS_TRYAGAIN)
+ 	{
+ 	  *errnop = errno;
++	  *herrnop = TRY_AGAIN;
++	}
++      else
++	{
++	  __set_errno (olderr);
+ 	  *herrnop = NETDB_INTERNAL;
+ 	}
+-      else
+-	__set_errno (olderr);
+       nis_freeresult (result);
+       return retval;
+     }
+@@ -502,7 +506,7 @@
+ 					  buflen, errnop, h_errnop,
+ 					  AI_V4MAPPED);
+       if (status == NSS_STATUS_SUCCESS)
+-        return status;
++	return status;
+     }
+ 
+   return internal_gethostbyname2_r (name, AF_INET, host, buffer,
+--- a/nis/nss_nis/nis-hosts.c	(revision 9672)
++++ b/nis/nss_nis/nis-hosts.c	(revision 9744)
+@@ -70,20 +70,20 @@
+      {
+        assert ((flags & AI_V4MAPPED) == 0 || af != AF_UNSPEC);
+        if (flags & AI_V4MAPPED)
+-         {
+-           map_v4v6_address ((char *) entdata->host_addr,
+-                             (char *) entdata->host_addr);
+-           result->h_addrtype = AF_INET6;
+-           result->h_length = IN6ADDRSZ;
+-         }
++	 {
++	   map_v4v6_address ((char *) entdata->host_addr,
++			     (char *) entdata->host_addr);
++	   result->h_addrtype = AF_INET6;
++	   result->h_length = IN6ADDRSZ;
++	 }
+        else
+-         {
+-           result->h_addrtype = AF_INET;
+-           result->h_length = INADDRSZ;
+-         }
++	 {
++	   result->h_addrtype = AF_INET;
++	   result->h_length = INADDRSZ;
++	 }
+      }
+    else if (af != AF_INET
+-            && inet_pton (AF_INET6, addr, entdata->host_addr) > 0)
++	    && inet_pton (AF_INET6, addr, entdata->host_addr) > 0)
+      {
+        result->h_addrtype = AF_INET6;
+        result->h_length = IN6ADDRSZ;
+@@ -164,14 +164,14 @@
+       int keylen;
+       int yperr;
+       if (new_start)
+-        yperr = yp_first (domain, "hosts.byname", &outkey, &keylen, &result,
++	yperr = yp_first (domain, "hosts.byname", &outkey, &keylen, &result,
+ 			  &len);
+       else
+-        yperr = yp_next (domain, "hosts.byname", oldkey, oldkeylen, &outkey,
++	yperr = yp_next (domain, "hosts.byname", oldkey, oldkeylen, &outkey,
+ 			 &keylen, &result, &len);
+ 
+       if (__builtin_expect (yperr != YPERR_SUCCESS, 0))
+-        {
++	{
+ 	  enum nss_status retval = yperr2nss (yperr);
+ 
+ 	  switch (retval)
+@@ -191,12 +191,12 @@
+ 	}
+ 
+       if (__builtin_expect ((size_t) (len + 1) > linebuflen, 0))
+-        {
+-          free (result);
++	{
++	  free (result);
+ 	  *h_errnop = NETDB_INTERNAL;
+-          *errnop = ERANGE;
+-          return NSS_STATUS_TRYAGAIN;
+-        }
++	  *errnop = ERANGE;
++	  return NSS_STATUS_TRYAGAIN;
++	}
+ 
+       char *p = strncpy (data->linebuffer, result, len);
+       data->linebuffer[len] = '\0';
+@@ -233,7 +233,7 @@
+   __libc_lock_lock (lock);
+ 
+   status = internal_nis_gethostent_r (host, buffer, buflen, errnop, h_errnop,
+-		        ((_res.options & RES_USE_INET6) ? AF_INET6 : AF_INET),
++			((_res.options & RES_USE_INET6) ? AF_INET6 : AF_INET),
+ 			((_res.options & RES_USE_INET6) ? AI_V4MAPPED : 0 ));
+ 
+   __libc_lock_unlock (lock);
+@@ -346,7 +346,7 @@
+ 
+   return internal_gethostbyname2_r (name, af, host, buffer, buflen, errnop,
+ 				    h_errnop,
+-		        ((_res.options & RES_USE_INET6) ? AI_V4MAPPED : 0));
++			((_res.options & RES_USE_INET6) ? AI_V4MAPPED : 0));
+ }
+ 
+ 
+@@ -456,7 +456,10 @@
+ {
+   char *domain;
+   if (yp_get_default_domain (&domain))
+-    return NSS_STATUS_UNAVAIL;
++    {
++      *herrnop = NO_DATA;
++      return NSS_STATUS_UNAVAIL;
++    }
+ 
+   /* Convert name to lowercase.  */
+   size_t namlen = strlen (name);
+--- a/elf/dl-object.c	(revision 9672)
++++ b/elf/dl-object.c	(revision 9744)
+@@ -1,5 +1,5 @@
+ /* Storage management for the chain of loaded shared objects.
+-   Copyright (C) 1995-2002,2004,2006,2007,2008 Free Software Foundation, Inc.
++   Copyright (C) 1995-2002,2004,2006-2008,2009 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -67,6 +67,10 @@
+ 
+   new->l_name = realname;
+   new->l_type = type;
++  /* If we set the bit now since we know it is never used we avoid
++     dirtying the cache line later.  */
++  if ((GLRO(dl_debug_mask) & DL_DEBUG_UNUSED) == 0)
++    new->l_used = 1;
+   new->l_loader = loader;
+ #if NO_TLS_OFFSET != 0
+   new->l_tls_offset = NO_TLS_OFFSET;
+@@ -174,7 +178,7 @@
+ 	  if (result == NULL)
+ 	    {
+ 	      /* We were not able to determine the current directory.
+-	         Note that free(origin) is OK if origin == NULL.  */
++		 Note that free(origin) is OK if origin == NULL.  */
+ 	      free (origin);
+ 	      origin = (char *) -1;
+ 	      goto out;
+--- a/elf/dl-lookup.c	(revision 9672)
++++ b/elf/dl-lookup.c	(revision 9744)
+@@ -777,7 +777,7 @@
+   if (__builtin_expect (protected != 0, 0))
+     {
+       /* It is very tricky.  We need to figure out what value to
+-         return for the protected symbol.  */
++	 return for the protected symbol.  */
+       if (type_class == ELF_RTYPE_CLASS_PLT)
+ 	{
+ 	  if (current_value.s != NULL && current_value.m != undef_map)
+@@ -822,7 +822,8 @@
+ 				  version, type_class, flags, skip_map);
+ 
+   /* The object is used.  */
+-  current_value.m->l_used = 1;
++  if (__builtin_expect (current_value.m->l_used == 0, 0))
++    current_value.m->l_used = 1;
+ 
+   if (__builtin_expect (GLRO(dl_debug_mask)
+ 			& (DL_DEBUG_BINDINGS|DL_DEBUG_PRELINK), 0))
+@@ -844,7 +845,7 @@
+   Elf_Symndx nchain;
+ 
+   if (__builtin_expect (map->l_info[DT_ADDRTAGIDX (DT_GNU_HASH) + DT_NUM
+-  				    + DT_THISPROCNUM + DT_VERSIONTAGNUM
++				    + DT_THISPROCNUM + DT_VERSIONTAGNUM
+ 				    + DT_EXTRANUM + DT_VALNUM] != NULL, 1))
+     {
+       Elf32_Word *hash32
+--- a/ports/sysdeps/mips/dl-lookup.c	(revision 9672)
++++ b/ports/sysdeps/mips/dl-lookup.c	(revision 9744)
+@@ -794,7 +794,7 @@
+   if (__builtin_expect (protected != 0, 0))
+     {
+       /* It is very tricky.  We need to figure out what value to
+-         return for the protected symbol.  */
++	 return for the protected symbol.  */
+       if (type_class == ELF_RTYPE_CLASS_PLT)
+ 	{
+ 	  if (current_value.s != NULL && current_value.m != undef_map)
+@@ -839,7 +839,8 @@
+ 				  version, type_class, flags, skip_map);
+ 
+   /* The object is used.  */
+-  current_value.m->l_used = 1;
++  if (__builtin_expect (current_value.m->l_used == 0, 0))
++    current_value.m->l_used = 1;
+ 
+   if (__builtin_expect (GLRO(dl_debug_mask)
+ 			& (DL_DEBUG_BINDINGS|DL_DEBUG_PRELINK), 0))
+@@ -861,7 +862,7 @@
+   Elf_Symndx nchain;
+ 
+   if (__builtin_expect (map->l_info[DT_ADDRTAGIDX (DT_GNU_HASH) + DT_NUM
+-  				    + DT_THISPROCNUM + DT_VERSIONTAGNUM
++				    + DT_THISPROCNUM + DT_VERSIONTAGNUM
+ 				    + DT_EXTRANUM + DT_VALNUM] != NULL, 1))
+     {
+       Elf32_Word *hash32
+--- a/ports/ChangeLog.mips	(revision 9672)
++++ b/ports/ChangeLog.mips	(revision 9744)
+@@ -1,3 +1,7 @@
++2009-12-16  Joseph Myers  <joseph@codesourcery.com>
++
++	* sysdeps/mips/dl-lookup.c: Update from generic version.
++
+ 2009-12-01  Joseph Myers  <joseph@codesourcery.com>
+ 
+ 	* sysdeps/unix/sysv/linux/mips/mips64/n32/syscalls.list

@@ -1,0 +1,22 @@
+debian/tmp-libc/usr/lib/libBrokenLocale.a usr/lib
+debian/tmp-libc/usr/lib/libbsd-compat.a usr/lib
+debian/tmp-libc/usr/lib/libc.a usr/lib
+debian/tmp-libc/usr/lib/libcrt.a usr/lib
+debian/tmp-libc/usr/lib/libcrt_nonshared.a usr/lib
+debian/tmp-libc/usr/lib/libcrypt.a usr/lib
+debian/tmp-libc/usr/lib/libdl.a usr/lib
+debian/tmp-libc/usr/lib/libg.a usr/lib
+debian/tmp-libc/usr/lib/libhurduser.a usr/lib
+debian/tmp-libc/usr/lib/libieee.a usr/lib
+debian/tmp-libc/usr/lib/libm.a usr/lib
+debian/tmp-libc/usr/lib/libmachuser.a usr/lib
+debian/tmp-libc/usr/lib/libmcheck.a usr/lib
+debian/tmp-libc/usr/lib/libnsl.a usr/lib
+debian/tmp-libc/usr/lib/libresolv.a usr/lib
+debian/tmp-libc/usr/lib/librpcsvc.a usr/lib
+debian/tmp-libc/usr/lib/librt.a usr/lib
+debian/tmp-libc/usr/lib/libutil.a usr/lib
+
+debian/tmp-libc/usr/lib/*.o usr/lib
+debian/tmp-libc/usr/lib/*.so usr/lib
+debian/tmp-libc/usr/include/* usr/include

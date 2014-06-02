@@ -1,0 +1,12 @@
+--- sysdeps/unix/sysv/linux/check_pf.c~	2010-04-15 16:09:03.661086635 +0200
++++ sysdeps/unix/sysv/linux/check_pf.c	2010-04-15 17:50:08.401085393 +0200
+@@ -178,7 +178,8 @@
+ 		    }
+ 		  else
+ 		    {
+-		      if (!IN6_IS_ADDR_LOOPBACK (address))
++		      if (!IN6_IS_ADDR_LOOPBACK (address)
++			  && !IN6_IS_ADDR_LINKLOCAL(address))
+ 			*seen_ipv6 = true;
+ 		    }
+ 		}

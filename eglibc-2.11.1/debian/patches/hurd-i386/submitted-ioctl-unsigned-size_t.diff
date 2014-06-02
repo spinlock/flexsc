@@ -1,0 +1,38 @@
+Add some basic types for ioctls.
+
+---
+ sysdeps/mach/hurd/bits/ioctls.h |   14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+--- a/sysdeps/mach/hurd/bits/ioctls.h
++++ b/sysdeps/mach/hurd/bits/ioctls.h
+@@ -149,9 +149,17 @@
+ #define	_IOT_SIMPLE(type)	_IOT (_IOTS (type), 1, 0, 0, 0, 0)
+ 
+ /* Basic C types.  */
+-#define	_IOT__IOTBASE_int	_IOT_SIMPLE (int)
+ #define	_IOT__IOTBASE_char	_IOT_SIMPLE (char)
++#define	_IOT__IOTBASE_int	_IOT_SIMPLE (int)
+ #define	_IOT__IOTBASE_short	_IOT_SIMPLE (short)
++#define	_IOT__IOTBASE_long	_IOT_SIMPLE (long)
++#define	_IOT_char		_IOT_SIMPLE (char)
++#define	_IOT_int		_IOT_SIMPLE (int)
++#define	_IOT_short		_IOT_SIMPLE (short)
++#define	_IOT_long		_IOT_SIMPLE (long)
++
++#define	_IOT__IOTBASE_size_t	_IOT_SIMPLE (size_t)
++#define	_IOT__IOTBASE_ssize_t	_IOT_SIMPLE (ssize_t)
+ 
+ 
+ /* Standard flavors of ioctls.
+@@ -174,6 +182,10 @@
+ #define _IOC_ENCODE_TYPE_1(typespec)	_IOC_ENCODE_TYPE_2(typespec)
+ #define _IOC_ENCODE_TYPE_2(typespec)	_IOT_##typespec
+ 
++/* Also, ignore signedness.  */
++#define	_IOTBASE_unsigned
++#define	_IOTBASE_signed
++
+ 
+ /* ioctls verbatim from 4.4 <sys/ioctl.h>.  */
+ 

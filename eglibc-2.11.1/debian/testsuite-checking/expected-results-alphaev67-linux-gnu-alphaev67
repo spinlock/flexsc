@@ -1,0 +1,28 @@
+#
+# Allowed failures for alphaev67-linux-gnu-alphaev67 and the returned make
+# failure number, indicating the signal the process died with.
+# Format: <Failed test>, Error <Make error code> [(ignored)]
+#
+annexc.out, Error 1 (ignored)
+check-localplt.out, Error 1
+noinl-tester.out, Error 1
+tst-cleanup2.out, Error 1
+tst-cleanupx2.out, Error 1
+tst-cpuclock2.out, Error 1
+tst-eintr1.out, Error 1
+tst-mutexpi4.out, Error 1
+tst-mutexpi5a.out, Error 1
+tst-mutexpi5.out, Error 1
+tst-mutexpi6.out, Error 1
+tst-mutexpi9.out, Error 1
+tst-robustpi1.out, Error 1
+tst-robustpi2.out, Error 1
+tst-robustpi3.out, Error 1
+tst-robustpi4.out, Error 1
+tst-robustpi5.out, Error 1
+tst-robustpi6.out, Error 1
+tst-robustpi7.out, Error 1
+tst-robustpi9.out, Error 1
+tst-signal3.out, Error 1
+tst-timer.out, Error 132
+tst-timer.out, Error 139

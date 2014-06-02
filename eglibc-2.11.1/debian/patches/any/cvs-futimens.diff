@@ -1,0 +1,18 @@
+2009-12-21  Ulrich Drepper  <drepper@redhat.com>
+
+	* sysdeps/unix/sysv/linux/futimens.c: Handle AT_FDCWD.
+
+--- a/sysdeps/unix/sysv/linux/futimens.c
++++ b/sysdeps/unix/sysv/linux/futimens.c
+@@ -33,6 +33,11 @@ int
+ futimens (int fd, const struct timespec tsp[2])
+ {
+ #ifdef __NR_utimensat
++  if (fd < 0)
++    {
++      __set_errno (EBADF);
++      return -1;
++    }
+   return INLINE_SYSCALL (utimensat, 4, fd, NULL, tsp, 0);
+ #else
+   __set_errno (ENOSYS);

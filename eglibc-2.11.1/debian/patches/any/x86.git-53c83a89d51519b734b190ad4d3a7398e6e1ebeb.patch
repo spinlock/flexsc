@@ -1,0 +1,29 @@
+2010-02-20  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* sysdeps/i386/i686/multiarch/strcmp-sse4.S: Use cfi_remember_state
+	and cfi_restore_state only if USE_AS_STRNCMP is defined.
+
+diff --git a/sysdeps/i386/i686/multiarch/strcmp-sse4.S b/sysdeps/i386/i686/multiarch/strcmp-sse4.S
+index d5fd23e..81d6ec6 100644
+--- a/sysdeps/i386/i686/multiarch/strcmp-sse4.S
++++ b/sysdeps/i386/i686/multiarch/strcmp-sse4.S
+@@ -178,7 +178,9 @@ L(first4bytes):
+ 	PUSH	(%ebx)
+ 	PUSH	(%edi)
+ 	PUSH	(%esi)
++#ifdef USE_AS_STRNCMP
+ 	cfi_remember_state
++#endif
+ 	mov	%edx, %edi
+ 	mov	%eax, %esi
+ 	xorl	%eax, %eax
+@@ -246,8 +248,8 @@ L(ret):
+ 	ret
+ 
+ 	.p2align 4
+-	cfi_restore_state
+ #ifdef USE_AS_STRNCMP
++	cfi_restore_state
+ L(more16byteseq):
+ 	POP	(%esi)
+ 	POP	(%edi)

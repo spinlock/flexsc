@@ -1,0 +1,76 @@
+Package: libc6
+Architecture: amd64 arm armeb armel i386 lpia m32r m68k mips mipsel powerpc ppc64 sparc sparc64 s390 hppa sh3 sh4 sh3eb sh4eb
+Section: libs
+Priority: required
+Depends: libc-bin (= ${binary:Version}), ${misc:Depends}, hurd (>= 20070606-1+SVN) [hurd-i386], libgcc1 [!hppa !m68k], libgcc2 [m68k], libgcc4 [hppa], tzdata, findutils (>= 4.4.0-2ubuntu2)
+Recommends: libc6-i686 [i386], libc0.1-i686 [kfreebsd-i386]
+Suggests: glibc-doc, debconf | debconf-2.0, locales [!hurd-i386]
+Provides: ${locale-compat:Depends}
+Conflicts: belocs-locales-bin, tzdata-etch, tzdata (<< 2007k-1)
+Replaces: belocs-locales-bin
+Breaks: nscd (<< 2.9)
+Description: Embedded GNU C Library: Shared libraries
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C library
+ and the standard math library, as well as many others.
+
+Package: libc6-dev
+Architecture: amd64 arm armeb armel i386 lpia m32r m68k mips mipsel powerpc ppc64 sparc sparc64 s390 hppa sh3 sh4 sh3eb sh4eb
+Section: libdevel
+Priority: optional
+Depends: libc6 (= ${binary:Version}), libc-dev-bin (= ${binary:Version}), ${misc:Depends}, linux-libc-dev [linux-any], kfreebsd-kernel-headers (>= 0.11) [kfreebsd-any], gnumach-dev [hurd-i386], hurd-dev (>= 20080607-3) [hurd-i386], libpthread-stubs0-dev [hurd-i386]
+Recommends: gcc | c-compiler
+Suggests: glibc-doc, manpages-dev
+Provides: libc-dev, libc6-dev [alpha ia64 hurd-i386 kfreebsd-i386 kfreebsd-amd64]
+Conflicts: binutils (<< 2.17cvs20070426-1)
+Description: Embedded GNU C Library: Development Libraries and Header Files
+ Contains the symlinks, headers, and object files needed to compile
+ and link programs which use the standard C library.
+
+Package: libc6-dbg
+Architecture: amd64 arm armeb armel i386 lpia m32r m68k mips mipsel powerpc ppc64 sparc sparc64 s390 hppa sh3 sh4 sh3eb sh4eb
+Section: debug
+Priority: extra
+Provides: libc-dbg
+Depends: libc6 (= ${binary:Version}), ${misc:Depends}
+Description: Embedded GNU C Library: detached debugging symbols
+ This package contains the detached debugging symbols for the GNU C
+ library.
+
+Package: libc6-prof
+Architecture: amd64 arm armeb armel i386 lpia m32r m68k mips mipsel powerpc ppc64 sparc sparc64 s390 hppa sh3 sh4 sh3eb sh4eb
+Section: libdevel
+Priority: extra
+Depends: libc6 (= ${binary:Version}), ${misc:Depends}
+Description: Embedded GNU C Library: Profiling Libraries
+ Static libraries compiled with profiling info (-pg) suitable for use
+ with gprof.
+
+Package: libc6-pic
+Architecture: amd64 arm armeb armel i386 lpia m32r m68k mips mipsel powerpc ppc64 sparc sparc64 s390 hppa sh3 sh4 sh3eb sh4eb
+Section: libdevel
+Priority: optional
+Conflicts: libc-pic
+Provides: libc-pic, glibc-pic
+Depends: libc6 (= ${binary:Version}), ${misc:Depends}
+Description: Embedded GNU C Library: PIC archive library
+ Contains an archive library (ar file) composed of individual shared objects.
+ This is used for creating a library which is a smaller subset of the
+ standard libc shared library. The reduced library is used on the Debian
+ boot floppies. If you are not making your own set of Debian boot floppies
+ using the `boot-floppies' package, you probably don't need this package.
+
+Package: libc6-udeb
+XC-Package-Type: udeb
+Architecture: amd64 arm armeb armel i386 lpia m32r m68k mips mipsel powerpc ppc64 sparc sparc64 s390 hppa sh3 sh4 sh3eb sh4eb
+Section: debian-installer
+Priority: extra
+Provides: libc6, libc-udeb, ${locale-compat:Depends}
+Description: Embedded GNU C Library: Shared libraries - udeb
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C library
+ and the standard math library, as well as many others.
+ .
+ This package contains a minimal set of libraries needed for the Debian
+ installer.  Do not install it on a normal system.
+

@@ -1,0 +1,3 @@
+# libpthread must be stripped specially; GDB needs the non-dynamic 
+# symbol table in order to load the thread debugging library.
+LIBC-FLAVOR: unstripped-binary-or-object .SLIBDIR/libpthread-2.10.1.so

@@ -1,0 +1,22 @@
+2006-01-18  Samuel Thibault  <samuel.thibault@ens-lyon.org>
+
+	Fix mlock() in all cases except non-readable pages.
+
+	* glibc/sysdeps/mach/hurd/mlock.c (mlock): Give VM_PROT_READ
+	instead of VM_PROT_ALL as parameter to __vm_wire function.
+
+---
+ sysdeps/mach/hurd/mlock.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/sysdeps/mach/hurd/mlock.c
++++ b/sysdeps/mach/hurd/mlock.c
+@@ -40,7 +40,7 @@
+   page = trunc_page ((vm_address_t) addr);
+   len = round_page ((vm_address_t) addr + len) - page;
+   err = __vm_wire (hostpriv, __mach_task_self (), page, len,
+-		   VM_PROT_ALL); /* XXX ? */
++		   VM_PROT_READ);
+   __mach_port_deallocate (__mach_task_self (), hostpriv);
+ 
+   return err ? __hurd_fail (err) : 0;

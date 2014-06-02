@@ -1,0 +1,13 @@
+There are additional stubs in libpthread.
+---
+ include/stubs-biarch.h |    2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/include/stubs-biarch.h
++++ b/include/stubs-biarch.h
+@@ -10,3 +10,5 @@
+ #else
+ # error "unexpected value for __WORDSIZE macro"
+ #endif
++
++#include <gnu/stubs-pthread.h>

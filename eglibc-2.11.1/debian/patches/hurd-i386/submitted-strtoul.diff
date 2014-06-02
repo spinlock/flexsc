@@ -1,0 +1,20 @@
+2007-11-02  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* hurd/lookup-retry.c (__hurd_file_name_lookup_retry): Use 
+	  __strtoul_internal instead of strtoul.
+
+---
+ hurd/lookup-retry.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/hurd/lookup-retry.c
++++ b/hurd/lookup-retry.c
+@@ -194,7 +194,7 @@
+ 		  char *end;
+ 		  int save = errno;
+ 		  errno = 0;
+-		  fd = (int) strtoul (&retryname[3], &end, 10);
++		  fd = (int) __strtoul_internal (&retryname[3], &end, 10, 0);
+ 		  if (end == NULL || errno || /* Malformed number.  */
+ 		      /* Check for excess text after the number.  A slash
+ 			 is valid; it ends the component.  Anything else

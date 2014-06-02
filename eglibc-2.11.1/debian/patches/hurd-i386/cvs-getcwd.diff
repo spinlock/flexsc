@@ -1,0 +1,19 @@
+The patch below fixes a spurious call to mach_port_deallocate: rootdevid
+is already deallocated as soon as it is fetched through __io_identity.
+
+---
+ getcwd.c |    1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/sysdeps/mach/hurd/getcwd.c b/sysdeps/mach/hurd/getcwd.c
+index 7e07e6b..f833f3d 100644
+--- a/sysdeps/mach/hurd/getcwd.c
++++ b/sysdeps/mach/hurd/getcwd.c
+@@ -60,7 +60,6 @@ _hurd_canonicalize_directory_name_internal (file_t thisdir,
+       __mach_port_deallocate (__mach_task_self (), thisid);
+       __mach_port_deallocate (__mach_task_self (), thisdevid);
+       __mach_port_deallocate (__mach_task_self (), rootid);
+-      __mach_port_deallocate (__mach_task_self (), rootdevid);
+ 
+       if (dirbuf != NULL)
+ 	__vm_deallocate (__mach_task_self (),

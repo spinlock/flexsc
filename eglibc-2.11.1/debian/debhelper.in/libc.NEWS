@@ -1,0 +1,51 @@
+glibc (2.9-8) unstable; urgency=low
+
+  Starting with version 2.9-8, unified IPv4/IPv6 lookup have been enabled
+  in the glibc's resolver. This is faster, fixes numerous of bugs, but is
+  problematic on some broken DNS servers and/or wrongly configured 
+  firewalls. 
+  
+  If such a DNS server is detected, the resolver switches (permanently
+  for that process) to a mode where the second request is sent only when
+  the first answer has been received. This means the first request will
+  be timeout, but subsequent requests should be fast again. This 
+  behaviour can be enabled permanently by adding 'options single-request'
+  to /etc/resolv.conf.  
+
+ -- Aurelien Jarno <aurel32@debian.org>  Thu, 23 Apr 2009 21:14:32 +0200
+
+glibc (2.6.1-2) unstable; urgency=low
+
+  Starting with version 2.6.1, glibc ships a /etc/ld.so.conf.d/libc.conf that
+  enforces /usr/local/lib to take precedence over /usr/lib. This is the
+  intended behaviour (it works like the $PATH where /usr/local/bin takes
+  precedence over /usr/bin).
+
+  To revert that (though doing so is discouraged) you can add /usr/lib to the
+  beginning of /etc/ld.so.conf.d/libc.conf. (see bug#440394).
+
+ -- Pierre Habouzit <madcoder@debian.org>  Sat, 01 Sep 2007 16:58:15 +0200
+
+glibc (2.5-1) unstable; urgency=low
+
+  The script tzconfig has been removed from glibc 2.5-1 and following 
+  versions. Please use 'dpkg-reconfigure tzdata' instead to configure
+  the timezone.
+
+ -- Aurelien Jarno <aurel32@debian.org>  Fri, 16 Nov 2007 15:38:54 +0100
+
+glibc (2.5-1) unstable; urgency=low
+
+  Starting with version 2.5-1, the glibc requires a 2.6.1 or later 
+  kernel.  If you use a 2.4 kernel, please upgrade it *before*
+  installing glibc.
+
+  This also means that it is not possible to use LD_ASSUME_KERNEL with a
+  version lower than 2.6.1. If you have set such a thing in /etc/profile, 
+  ~/.bashrc or any other initialization file (something you should have
+  never done!!!), please remove that *before* installing glibc.
+
+  Note: This does not apply to the m68k architecture and to non-Linux
+        kernels.
+
+ -- Aurelien Jarno <aurel32@debian.org>  Tue, 24 Apr 2007 00:26:48 +0200

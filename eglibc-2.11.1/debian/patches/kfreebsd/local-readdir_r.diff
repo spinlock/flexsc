@@ -1,0 +1,43 @@
+---
+ sysdeps/unix/readdir_r.c |   30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
+
+--- a/sysdeps/unix/readdir_r.c
++++ b/sysdeps/unix/readdir_r.c
+@@ -113,7 +113,35 @@
+   while (dp->d_ino == 0);
+ 
+   if (dp != NULL)
+-    *result = memcpy (entry, dp, reclen);
++    {
++      /* The required size of *entry, according to POSIX, is
++	   offsetof (DIRENT_TYPE, d_name[0]) + NAME_MAX + 1.
++	 We must not write beyond the end of *entry.  On some operating
++	 systems, dp->d_reclen may be larger; in this case, copy only as
++	 many bytes as needed.  Also give an error if d_name is too long.  */
++#ifdef _DIRENT_HAVE_D_RECLEN
++      /* DIRENT_TYPE is of variable size, with d_name as its last entry.  */
++      size_t namelen;
++# ifdef _DIRENT_HAVE_D_NAMLEN
++      namelen = dp->d_namlen;
++# else
++      namelen = strlen (dp->d_name);
++# endif
++
++      if (namelen <= NAME_MAX)
++	*result = memcpy (entry, dp,
++			  offsetof (DIRENT_TYPE, d_name[0]) + namelen + 1);
++      else
++	{
++	  errno = EOVERFLOW;
++	  dp = NULL;
++	  *result = NULL;
++	}
++#else
++      /* DIRENT_TYPE is of fixed size.  */
++      *result = memcpy (entry, dp, reclen);
++#endif
++    }
+   else
+     *result = NULL;
+ 

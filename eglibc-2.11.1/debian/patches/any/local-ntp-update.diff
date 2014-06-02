@@ -1,0 +1,13 @@
+Partial update of the NTP API, backported from commit eb4157390cac6212921ef198353635e138dc0a00
+
+--- a/sysdeps/unix/sysv/linux/sys/timex.h
++++ b/sysdeps/unix/sysv/linux/sys/timex.h	
+@@ -85,6 +85,8 @@
+ #define MOD_TIMECONST	ADJ_TIMECONST
+ #define MOD_CLKB	ADJ_TICK
+ #define MOD_CLKA	ADJ_OFFSET_SINGLESHOT /* 0x8000 in original */
++#define MOD_MICRO	ADJ_MICRO
++#define MOD_NANO	ADJ_NANO
+ 
+ 
+ /* Status codes (timex.status) */

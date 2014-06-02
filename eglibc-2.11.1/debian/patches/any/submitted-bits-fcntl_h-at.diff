@@ -1,0 +1,376 @@
+2009-11-19  Aurelien Jarno  <aurelien@aurel32.net>
+    
+	* io/fcntl.h: Move AT_* defines to...
+	* sysdeps/mach/hurd/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/i386/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/ia64/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/s390/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/sh/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/sparc/bits/fcntl.h: ...here.
+	* sysdeps/unix/sysv/linux/x86_64/bits/fcntl.h: ...here.
+
+2009-11-19  Aurelien Jarno  <aurelien@aurel32.net>
+    
+	* sysdeps/unix/sysv/linux/alpha/bits/fcntl.h: Define AT_*
+	constants.
+	* sysdeps/unix/sysv/linux/am33/bits/fcntl.h: Define AT_*
+	constants.
+	* sysdeps/unix/sysv/linux/arm/bits/fcntl.h: Define AT_*
+	constants.
+	* sysdeps/unix/sysv/linux/cris/bits/fcntl.h: Define AT_*
+	constants.
+	* sysdeps/unix/sysv/linux/hppa/bits/fcntl.h: Define AT_*
+	constants.
+	* sysdeps/unix/sysv/linux/m68k/bits/fcntl.h: Define AT_*
+	constants.
+	* sysdeps/unix/sysv/linux/mips/bits/fcntl.h: Define AT_*
+	constants.
+
+--- a/io/fcntl.h
++++ b/io/fcntl.h
+@@ -56,18 +56,6 @@ __BEGIN_DECLS
+ # define SEEK_END	2	/* Seek from end of file.  */
+ #endif	/* XPG */
+ 
+-#ifdef __USE_ATFILE
+-# define AT_FDCWD		-100	/* Special value used to indicate
+-					   the *at functions should use the
+-					   current working directory. */
+-# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
+-# define AT_REMOVEDIR		0x200	/* Remove directory instead of
+-					   unlinking file.  */
+-# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
+-# define AT_EACCESS		0x200	/* Test access permitted for
+-					   effective IDs, not real IDs.  */
+-#endif
+-
+ /* Do the file control operation described by CMD on FD.
+    The remaining arguments are interpreted depending on CMD.
+ 
+--- a/sysdeps/mach/hurd/bits/fcntl.h
++++ b/sysdeps/mach/hurd/bits/fcntl.h
+@@ -219,3 +219,16 @@ struct flock64
+ # define POSIX_FADV_DONTNEED	4 /* Don't need these pages.  */
+ # define POSIX_FADV_NOREUSE	5 /* Data will be accessed once.  */
+ #endif
++
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
+--- a/sysdeps/unix/sysv/linux/i386/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/i386/bits/fcntl.h
+@@ -227,6 +227,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/sysdeps/unix/sysv/linux/ia64/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/ia64/bits/fcntl.h
+@@ -221,6 +221,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/powerpc/bits/fcntl.h
+@@ -227,6 +227,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/sysdeps/unix/sysv/linux/s390/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/s390/bits/fcntl.h
+@@ -247,6 +247,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/sysdeps/unix/sysv/linux/sh/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/sh/bits/fcntl.h
+@@ -227,6 +227,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/sysdeps/unix/sysv/linux/sparc/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/sparc/bits/fcntl.h
+@@ -246,6 +246,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/sysdeps/unix/sysv/linux/x86_64/bits/fcntl.h
++++ b/sysdeps/unix/sysv/linux/x86_64/bits/fcntl.h
+@@ -241,6 +241,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/ports/sysdeps/unix/sysv/linux/alpha/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/alpha/bits/fcntl.h
+@@ -200,6 +200,19 @@ struct flock64
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/ports/sysdeps/unix/sysv/linux/am33/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/am33/bits/fcntl.h
+@@ -179,3 +179,18 @@ struct flock64
+ # define POSIX_FADV_DONTNEED	4 /* Don't need these pages.  */
+ # define POSIX_FADV_NOREUSE	5 /* Data will be accessed once.  */
+ #endif
++
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
++
+--- a/ports/sysdeps/unix/sysv/linux/arm/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/arm/bits/fcntl.h
+@@ -227,6 +227,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/ports/sysdeps/unix/sysv/linux/cris/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/cris/bits/fcntl.h
+@@ -182,6 +182,19 @@ struct flock64
+ # define POSIX_FADV_NOREUSE	5 /* Data will be accessed once.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ /* Provide kernel hint to read ahead.  */
+--- a/ports/sysdeps/unix/sysv/linux/hppa/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/hppa/bits/fcntl.h
+@@ -198,6 +198,19 @@ struct flock64
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/ports/sysdeps/unix/sysv/linux/m68k/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/m68k/bits/fcntl.h
+@@ -226,6 +226,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU
+--- a/ports/sysdeps/unix/sysv/linux/mips/bits/fcntl.h
++++ b/ports/sysdeps/unix/sysv/linux/mips/bits/fcntl.h
+@@ -240,6 +240,19 @@ struct f_owner_ex
+ # define SPLICE_F_GIFT		8	/* Pages passed in are a gift.  */
+ #endif
+ 
++/* Values for `*at' functions.  */
++#ifdef __USE_ATFILE
++# define AT_FDCWD		-100	/* Special value used to indicate
++					   the *at functions should use the
++					   current working directory. */
++# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
++# define AT_REMOVEDIR		0x200	/* Remove directory instead of
++					   unlinking file.  */
++# define AT_SYMLINK_FOLLOW	0x400	/* Follow symbolic links.  */
++# define AT_EACCESS		0x200	/* Test access permitted for
++					   effective IDs, not real IDs.  */
++#endif
++
+ __BEGIN_DECLS
+ 
+ #ifdef __USE_GNU

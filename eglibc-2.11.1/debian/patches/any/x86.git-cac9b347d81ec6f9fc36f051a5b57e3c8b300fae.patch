@@ -1,0 +1,40 @@
+From cac9b347d81ec6f9fc36f051a5b57e3c8b300fae Mon Sep 17 00:00:00 2001
+From: H.J. Lu <hongjiu.lu@intel.com>
+Date: Wed, 14 Apr 2010 22:18:27 -0700
+Subject: [PATCH] Check DATA_CACHE_SIZE_HALF
+
+---
+ ChangeLog.x86                          |    5 +++++
+ sysdeps/x86_64/multiarch/memcmp-sse4.S |    4 ++--
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+2010-04-14  H.J. Lu  <hongjiu.lu@intel.com>
+
+	* sysdeps/x86_64/multiarch/memcmp-sse4.S: Check
+	DATA_CACHE_SIZE_HALF instead of SHARED_CACHE_SIZE_HALF.
+
+diff --git a/sysdeps/x86_64/multiarch/memcmp-sse4.S b/sysdeps/x86_64/multiarch/memcmp-sse4.S
+index 25dba86..fc439bb 100644
+--- a/sysdeps/x86_64/multiarch/memcmp-sse4.S
++++ b/sysdeps/x86_64/multiarch/memcmp-sse4.S
+@@ -34,7 +34,7 @@
+ #define JMPTBL(I, B)	(I - B)
+ 
+ #define BRANCH_TO_JMPTBL_ENTRY(TABLE, INDEX, SCALE)		\
+-  lea     	TABLE(%rip), %r11;				\
++  lea		TABLE(%rip), %r11;				\
+   movslq	(%r11, INDEX, SCALE), %rcx;			\
+   add		%r11, %rcx;					\
+   jmp		*%rcx;						\
+@@ -624,7 +624,7 @@ L(less32bytesin256in2alinged):
+ 
+ 	ALIGN (4)
+ L(512bytesormorein2aligned):
+-#ifdef SHARED_CACHE_SIZE_HALF
++#ifdef DATA_CACHE_SIZE_HALF
+ 	mov	$DATA_CACHE_SIZE_HALF, %r8
+ #else
+ 	mov	__x86_64_data_cache_size_half(%rip), %r8
+-- 
+1.7.0.5
+

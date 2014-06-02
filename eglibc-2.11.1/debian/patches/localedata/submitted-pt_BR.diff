@@ -1,0 +1,16 @@
+2009-11-23  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* locales/pt_BR: Change thousand separator to dot.
+
+diff --git a/localedata/locales/pt_BR b/localedata/locales/pt_BR
+index 8dbc14e..eac6c76 100644
+--- a/localedata/locales/pt_BR
++++ b/localedata/locales/pt_BR
+@@ -79,7 +79,7 @@ END LC_CTYPE
+ 
+ LC_NUMERIC
+ decimal_point             "<U002C>"
+-thousands_sep             ""
++thousands_sep             "<U002E>"
+ grouping                  0;0
+ END LC_NUMERIC

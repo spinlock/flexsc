@@ -1,0 +1,20 @@
+Revert (powerpc buildds still run 2.6.15 kernels):
+
+2009-12-21  Ulrich Drepper  <drepper@redhat.com>
+
+	* sysdeps/unix/sysv/linux/futimens.c: Handle AT_FDCWD.
+
+--- a/sysdeps/unix/sysv/linux/futimens.c.orig	2010-01-05 09:18:42.882336689 +0000
++++ b/sysdeps/unix/sysv/linux/futimens.c	2010-01-05 09:19:20.562336504 +0000
+@@ -33,11 +33,6 @@
+ futimens (int fd, const struct timespec tsp[2])
+ {
+ #ifdef __NR_utimensat
+-  if (fd < 0)
+-    {
+-      __set_errno (EBADF);
+-      return -1;
+-    }
+   return INLINE_SYSCALL (utimensat, 4, fd, NULL, tsp, 0);
+ #else
+   __set_errno (ENOSYS);

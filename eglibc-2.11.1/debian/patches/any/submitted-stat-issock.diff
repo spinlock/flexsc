@@ -1,0 +1,18 @@
+2010-02-13  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* io/sys/stat.h: The S_ISSOCK macro has been mandatory since 
+	POSIX 2001.
+
+diff --git a/io/sys/stat.h b/io/sys/stat.h
+index 733a927..f2d4d5b 100644
+--- a/io/sys/stat.h
++++ b/io/sys/stat.h
+@@ -143,7 +143,7 @@ __BEGIN_DECLS
+ # define S_ISLNK(mode)  0
+ #endif
+ 
+-#if (defined __USE_BSD || defined __USE_UNIX98) \
++#if (defined __USE_BSD || defined __USE_UNIX98 || defined __USE_XOPEN2K) \
+     && defined __S_IFSOCK
+ # define S_ISSOCK(mode) __S_ISTYPE((mode), __S_IFSOCK)
+ #endif

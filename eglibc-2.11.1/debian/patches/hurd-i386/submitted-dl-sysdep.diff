@@ -1,0 +1,25 @@
+2009-01-31  Samuel Thibault  <samuel.thibault@ens-lyon.org>
+
+	* sysdeps/mach/hurd/dl-sysdep.c: Include code only #ifdef SHARED.
+
+---
+ sysdeps/mach/hurd/dl-sysdep.c |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+--- a/sysdeps/mach/hurd/dl-sysdep.c
++++ b/sysdeps/mach/hurd/dl-sysdep.c
+@@ -42,6 +42,8 @@
+ #include <dl-machine.h>
+ #include <dl-procinfo.h>
+ 
++#ifdef SHARED
++
+ extern void __mach_init (void);
+ 
+ extern int _dl_argc;
+@@ -668,3 +670,5 @@
+ {
+   /* This no-op definition only gets used if libc is not linked in.  */
+ }
++
++#endif /* SHARED */

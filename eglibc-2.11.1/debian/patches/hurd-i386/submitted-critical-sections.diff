@@ -1,0 +1,59 @@
+Missing critical region locks.
+
+---
+ hurd/hurd/fd.h              |    2 ++
+ sysdeps/mach/hurd/dirfd.c   |    3 +++
+ sysdeps/mach/hurd/opendir.c |    2 ++
+ 3 files changed, 7 insertions(+)
+
+--- a/hurd/hurd/fd.h
++++ b/hurd/hurd/fd.h
+@@ -68,6 +68,7 @@
+ {
+   struct hurd_fd *descriptor;
+ 
++  HURD_CRITICAL_BEGIN;
+   __mutex_lock (&_hurd_dtable_lock);
+   if (fd < 0 || fd >= _hurd_dtablesize)
+     descriptor = NULL;
+@@ -90,6 +91,7 @@
+ 	}
+     }
+   __mutex_unlock (&_hurd_dtable_lock);
++  HURD_CRITICAL_END;
+ 
+   return descriptor;
+ }
+--- a/sysdeps/mach/hurd/dirfd.c
++++ b/sysdeps/mach/hurd/dirfd.c
+@@ -26,6 +26,8 @@
+ dirfd (DIR *dirp)
+ {
+   int fd;
++
++  HURD_CRITICAL_BEGIN;
+   __mutex_lock (&_hurd_dtable_lock);
+   for (fd = 0; fd < _hurd_dtablesize; ++fd)
+     if (_hurd_dtable[fd] == dirp->__fd)
+@@ -36,6 +38,7 @@
+       fd = -1;
+     }
+   __mutex_unlock (&_hurd_dtable_lock);
++  HURD_CRITICAL_END;
+ 
+   return fd;
+ }
+--- a/sysdeps/mach/hurd/opendir.c
++++ b/sysdeps/mach/hurd/opendir.c
+@@ -51,9 +51,11 @@
+     return NULL;
+ 
+   /* Set the descriptor to close on exec. */
++  HURD_CRITICAL_BEGIN;
+   __spin_lock (&d->port.lock);
+   d->flags |= FD_CLOEXEC;
+   __spin_unlock (&d->port.lock);
++  HURD_CRITICAL_END;
+ 
+   dirp->__fd = d;
+   dirp->__data = dirp->__ptr = NULL;

@@ -1,0 +1,5 @@
+# This file is used for biarch libraries.
+TMPDIR/SLIBDIR/*.so* SLIBDIR
+TMPDIR/LIBDIR/gconv/* LIBDIR/gconv/
+
+BUILD-TREE/test-results-*-FLAVOR usr/share/doc/LIBC-FLAVOR

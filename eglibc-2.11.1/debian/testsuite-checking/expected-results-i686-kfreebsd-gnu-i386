@@ -1,0 +1,43 @@
+#
+# Allowed failures for i686-kfreebsd-gnu-i386 and the returned make
+# failure number, indicating the signal the process died with.
+# Format: <Failed test>, Error <Make error code> [(ignored)]
+#
+annexc.out, Error 1 (ignored)
+check-localplt.out, Error 1
+test-ifaddrs.out, Error 1
+test_ifindex.out, Error 1
+tst-aio10.out, Error 1
+tst-aio4.out, Error 1
+tst-aio9.out, Error 1
+tst-cputimer2.out, Error 1
+tst-mknodat.out, Error 1
+tst-pselect.out, Error 1
+tst-timer4.out, Error 1
+tst-ttyname_r.out, Error 1
+tst-waitid.out, Error 1
+# *at emulation does not work under all condition     
+tst-chk1.out, Error 1
+tst-chk2.out, Error 1
+tst-chk3.out, Error 1
+tst-chk4.out, Error 1
+tst-chk5.out, Error 1
+tst-chk6.out, Error 1
+tst-faccessat.out, Error 1
+tst-fchmodat.out, Error 1
+tst-fstatat.out, Error 1
+tst-futimesat.out, Error 1
+tst-lfschk1.out, Error 1
+tst-lfschk2.out, Error 1
+tst-lfschk3.out, Error 1
+tst-lfschk4.out, Error 1
+tst-lfschk5.out, Error 1
+tst-lfschk6.out, Error 1
+tst-linkat.out, Error 1
+tst-mkdirat.out, Error 1
+tst-mkfifoat.out, Error 1
+tst-openat.out, Error 1
+tst-readlinkat.out, Error 1
+tst-renameat.out, Error 1
+tst-symlinkat.out, Error 1
+tst-unlinkat.out, Error 1

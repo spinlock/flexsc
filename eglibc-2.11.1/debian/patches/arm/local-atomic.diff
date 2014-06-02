@@ -1,0 +1,15 @@
+2010-02-09  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* sysdeps/arm/bits/atomic.h: remove useless include.
+
+--- a/ports/sysdeps/arm/bits/atomic.h
++++ b/ports/sysdeps/arm/bits/atomic.h
+@@ -17,7 +17,6 @@
+    02111-1307 USA.  */
+ 
+ #include <stdint.h>
+-#include <sysdep.h>
+ 
+ 
+ typedef int8_t atomic8_t;
+

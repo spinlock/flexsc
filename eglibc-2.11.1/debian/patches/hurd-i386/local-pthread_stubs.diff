@@ -1,0 +1,36 @@
+This provides so-called "pthread stubs", which permit thread-safe libraries to
+not have to explicitely link with libpthread, and just rely on libc providing
+e.g. void pthread_mutex_lock/unlock.  However, because of weak ELF symbols
+rules, this will only work as long as we set _dl_dynamic_weak to 1 (see
+local-dl-dynamic-weak.diff), so the plan is
+
+- once glibc has integrated Hurd's libpthread and thus is able to provide the
+pthread stubs itself, this patch can be dropped.
+- once we see that all packages got recompiled with that new glibc (i.e.
+apt-cache rdepends libpthread-stubs0 is empty), the local-dl-dynamic-weak.diff
+patch can be dropped.
+
+---
+ Makerules                       |    3 ++-
+ sysdeps/mach/hurd/libc-ldscript |    1 +
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+--- a/Makerules
++++ b/Makerules
+@@ -979,7 +979,8 @@
+ 	 cat $<; \
+ 	 echo 'GROUP ( $(slibdir)/libc.so$(libc.so-version)' \
+ 	      '$(libdir)/$(patsubst %,$(libtype.oS),$(libprefix)$(libc-name))'\
+-	      ' AS_NEEDED (' $(slibdir)/$(rtld-installed-name) ') )' \
++	      ' AS_NEEDED (' $(slibdir)/$(rtld-installed-name) ') )' ;\
++	 echo 'INPUT ( AS_NEEDED ( -lpthread-stubs ) )' \
+ 	) > $@.new
+ 	mv -f $@.new $@
+ 
+--- a/sysdeps/mach/hurd/libc-ldscript
++++ b/sysdeps/mach/hurd/libc-ldscript
+@@ -4,3 +4,4 @@
+    */
+ 
+ GROUP ( libcrt.a libmachuser.a libhurduser.a )
++INPUT ( -lpthread-stubs )

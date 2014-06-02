@@ -1,0 +1,10 @@
+--- ./sysdeps/ia64/elf/start.S~	2009-05-11 13:24:14.000000000 +0200
++++ ./sysdeps/ia64/elf/start.S	2009-05-12 18:14:39.000000000 +0200
+@@ -37,6 +37,7 @@
+ #include <sysdep.h>
+ 
+ #include <asm/unistd.h>
++#include <asm/types.h>
+ #include <asm/fpu.h>
+ 
+ /*

@@ -1,0 +1,46 @@
+---
+ math/Makefile |   20 ++++++++++++++------
+ 1 file changed, 14 insertions(+), 6 deletions(-)
+
+--- a/math/Makefile
++++ b/math/Makefile
+@@ -93,13 +93,17 @@
+ tests = test-matherr test-fenv atest-exp atest-sincos atest-exp2 basic-test \
+ 	test-misc test-fpucw tst-definitions test-tgmath test-tgmath-ret \
+ 	bug-nextafter bug-nexttoward bug-tgmath1 test-tgmath-int
+-# We do the `long double' tests only if this data type is available and
+-# distinct from `double'.
++# We do the `long double' tests only if this data type is available.
+ test-longdouble-yes = test-ldouble test-ildoubl
+ distribute += $(test-longdouble-yes:=.c)
+ 
++ifeq ($(long-double-fcts),yes)
++# If we have distinct types then enable testing.
++test-long-double-fcts = yes
++endif
++
+ ifneq (no,$(PERL))
+-libm-tests = test-float test-double $(test-longdouble-$(long-double-fcts)) \
++libm-tests = test-float test-double $(test-longdouble-$(test-long-double-fcts)) \
+ 	test-ifloat test-idouble
+ libm-tests.o = $(addsuffix .o,$(libm-tests))
+ 
+@@ -173,11 +177,15 @@
+ ifneq ($(long-double-fcts),yes)
+ # The `double' and `long double' types are the same on this machine.
+ # We won't compile the `long double' code at all.  Tell the `double' code
+-# to define aliases for the `FUNCl' names.  To avoid type conflicts in
+-# defining those aliases, tell <math.h> to declare the `FUNCl' names with
+-# `double' instead of `long double'.
++# to define aliases for the `FUNCl' names.
++ifeq ($(header-long-double-fcts),yes)
++math-CPPFLAGS += -DNO_LONG_DOUBLE
++else
++# To avoid type conflicts in  defining those aliases, tell <math.h> to
++# declare the `FUNCl' names with `double' instead of `long double'.
+ math-CPPFLAGS += -DNO_LONG_DOUBLE -D_Mlong_double_=double
+ endif
++endif
+ 
+ # The fdlibm code generates a lot of these warnings but is otherwise clean.
+ override CFLAGS += -Wno-uninitialized

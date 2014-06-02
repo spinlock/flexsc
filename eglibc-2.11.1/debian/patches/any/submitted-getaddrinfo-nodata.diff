@@ -1,0 +1,14 @@
+--- a/sysdeps/posix/getaddrinfo.c
++++ b/sysdeps/posix/getaddrinfo.c
+@@ -715,7 +715,10 @@ gaih_inet (const char *name, const struct gaih_service *service,
+ 						   tmpbuflen, &rc, &herrno,
+ 						   NULL));
+ 		      if (status == NSS_STATUS_SUCCESS)
+-			break;
++			{
++			  no_data = 0;
++			  break;
++			}
+ 		      if (status != NSS_STATUS_TRYAGAIN
+ 			  || rc != ERANGE || herrno != NETDB_INTERNAL)
+ 			{

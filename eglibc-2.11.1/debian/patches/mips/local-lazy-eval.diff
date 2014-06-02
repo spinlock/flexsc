@@ -1,0 +1,38 @@
+# All lines beginning with `# DP:' are a description of the patch.
+# DP: Description: Workaround invalid resolving of lazy evaluation stubs
+# DP: Related bugs: #265678
+# DP: Dpatch author: Thiemo Seufer <ths@debian.org>
+# DP: Patch author: Thiemo Seufer <ths@debian.org>
+# DP: Upstream status: Debian-Specific
+# DP: Status Details: The correct fix will be done to modify toolchains in etch.
+# DP: Date: 2005-04-11, 2005-04-16 updated by gotom
+
+2005-04-16  GOTO Masanori  <gotom@debian.org>
+
+	* sysdeps/mips/dl-machine.h: Drop due to _dl_lookup_versioned_symbol
+	and _dl_lookup_symbol are changed into _dl_lookup_symbol_x.
+
+2005-04-11  Thiemo Seufer <ths@debian.org>
+
+	* first version.
+
+---
+ elf/do-lookup.h |    7 +++++++
+ 1 file changed, 7 insertions(+)
+
+--- a/elf/do-lookup.h
++++ b/elf/do-lookup.h
+@@ -248,6 +248,13 @@
+ 		}
+ 	      /* FALLTHROUGH */
+ 	    case STB_GLOBAL:
++#ifdef __mips__
++	      /* HACK: MIPS marks its lazy evaluation stubs with SHN_UNDEF
++		 symbols, we skip them. */
++	      if (sym->st_shndx == SHN_UNDEF)
++		break;
++#endif
++
+ 	      /* Global definition.  Just what we need.  */
+ 	      result->s = sym;
+ 	      result->m = (struct link_map *) map;

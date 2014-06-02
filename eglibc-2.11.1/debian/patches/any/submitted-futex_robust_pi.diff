@@ -1,0 +1,109 @@
+2009-09-27  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* sysdeps/unix/sysv/linux/kernel-features.h
+	(__ASSUME_SET_ROBUST_LIST): Update per-arch conditions when
+	each feature was introduced. (__ASSUME_FUTEX_LOCK_PI): Ditto.
+
+---
+ ports/sysdeps/unix/sysv/linux/arm/kernel-features.h  |   10 +++++++
+ ports/sysdeps/unix/sysv/linux/hppa/kernel-features.h |   10 +++++++
+ ports/sysdeps/unix/sysv/linux/mips/kernel-features.h |   11 ++++++++
+ sysdeps/unix/sysv/linux/kernel-features.h            |   26 +++++++++++++------
+ 4 files changed, 50 insertions(+), 7 deletions(-)
+
+--- a/sysdeps/unix/sysv/linux/kernel-features.h
++++ b/sysdeps/unix/sysv/linux/kernel-features.h
+@@ -454,11 +454,16 @@
+ # define __ASSUME_ATFCTS	1
+ #endif
+ 
+-/* Support for inter-process robust mutexes was added in 2.6.17.  */
+-#if __LINUX_KERNEL_VERSION >= 0x020611 \
+-    && ((!defined __sh__ && !defined __alpha__) \
+-	|| (__LINUX_KERNEL_VERSION >= 0x020613 && defined __sh__) \
+-	|| (__LINUX_KERNEL_VERSION >= 0x020617 && defined __alpha__))
++/* Support for inter-process robust mutexes was added in 2.6.17 on i386,
++   powerpc and s390. It was added in 2.6.18 on s390 and sparc64, 2.6.19 on
++   ia64 and 2.6.23 on sh. */
++#if (__LINUX_KERNEL_VERSION >= 0x020611 && defined __i386__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020611 && defined __powerpc__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020612 && defined __s390__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020612 && defined __sparc__ && __arch64__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020611 && defined __x86_64__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020613 && defined __ia64__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020617 && defined __sh__)
+ # define __ASSUME_SET_ROBUST_LIST	1
+ #endif
+ 
+@@ -469,8 +474,15 @@
+ # define __ASSUME_COMPLETE_READV_WRITEV	1
+ #endif
+ 
+-/* Support for PI futexes was added in 2.6.18.  */
+-#if __LINUX_KERNEL_VERSION >= 0x020612
++/* Support for PI futexes was added in 2.6.18 on i386, powerpc, s390, sparc64
++   x86_64. It was added in 2.6.19 on ia64 and in 2.6.23 on sh. */
++#if (__LINUX_KERNEL_VERSION >= 0x020612 && defined __i386__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020612 && defined __powerpc__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020612 && defined __s390__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020612 && defined __sparc__ && __arch64__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020612 && defined __x86_64__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020613 && defined __ia64__) \
++     || (__LINUX_KERNEL_VERSION >= 0x020617 && defined __sh__)
+ # define __ASSUME_FUTEX_LOCK_PI	1
+ #endif
+ 
+--- a/ports/sysdeps/unix/sysv/linux/arm/kernel-features.h
++++ b/ports/sysdeps/unix/sysv/linux/arm/kernel-features.h
+@@ -51,6 +51,16 @@
+ # define __ASSUME_SIGFRAME_V2	1
+ #endif
+ 
++/* Support for inter-process robust mutexes was added in 2.6.28.  */
++#if __LINUX_KERNEL_VERSION >= 132636
++ # define __ASSUME_SET_ROBUST_LIST	1
++#endif
++
++/* Support for PI futexes was added in 2.6.28.  */
++#if __LINUX_KERNEL_VERSION >= 132636
++ # define __ASSUME_FUTEX_LOCK_PI	1
++#endif
++
+ #include_next <kernel-features.h>
+ 
+ /* These syscalls are not implemented yet for ARM.  */
+--- a/ports/sysdeps/unix/sysv/linux/hppa/kernel-features.h
++++ b/ports/sysdeps/unix/sysv/linux/hppa/kernel-features.h
+@@ -36,4 +36,14 @@
+ # define __ASSUME_LWS_CAS		1
+ #endif
+ 
++/* Support for inter-process robust mutexes was added in 2.6.19 */
++#if __LINUX_KERNEL_VERSION >= 0x020613
++ # define __ASSUME_SET_ROBUST_LIST	1
++#endif
++
++/* Support for PI futexes was added in 2.6.19 */
++#if __LINUX_KERNEL_VERSION >= 0x020613
++ # define __ASSUME_FUTEX_LOCK_PI	1
++#endif
++
+ #include_next <kernel-features.h>
+--- a/ports/sysdeps/unix/sysv/linux/mips/kernel-features.h
++++ b/ports/sysdeps/unix/sysv/linux/mips/kernel-features.h
+@@ -31,4 +31,15 @@
+ # define __ASSUME_FCNTL64		1
+ #endif
+ 
++/* Support for inter-process robust mutexes was added in 2.6.18.  */
++#if __LINUX_KERNEL_VERSION >= 132626
++ # define __ASSUME_SET_ROBUST_LIST	1
++#endif
++
++
++/* Support for PI futexes was added in 2.6.18.  */
++#if __LINUX_KERNEL_VERSION >= 132626
++ # define __ASSUME_FUTEX_LOCK_PI	1
++#endif
++
+ #include_next <kernel-features.h>

@@ -1,0 +1,27 @@
+Fix issue #12159, x86-64 strchr propagation of search byte into all bytes
+of SSE register
+
+2010-10-25  Ulrich Drepper  <drepper@redhat.com>
+
+	[BZ #12159]
+	* sysdeps/x86_64/multiarch/strchr.S: Fix propagation of search byte
+	into all bytes of SSE register.
+	Patch by Richard Li <richardpku@gmail.com>.
+
+--- a/sysdeps/x86_64/multiarch/strchr.S
++++ b/sysdeps/x86_64/multiarch/strchr.S
+@@ -87,13 +87,13 @@ 
+ 	pxor	%xmm2, %xmm2
+ 	movd	%esi, %xmm1
+ 	movl	%edi, %ecx
++	pshufb  %xmm2, %xmm1
+ 	andl	$15, %ecx
+ 	movq	%rdi, %r8
+ 	je	L(aligned_start)
+ 
+ /* Handle unaligned string.  */
+ 	andq	$-16, %r8
+-	pshufb  %xmm2, %xmm1
+ 	movdqa	(%r8), %xmm0
+ 	pcmpeqb	 %xmm0, %xmm2
+ 	pcmpeqb	 %xmm1, %xmm0

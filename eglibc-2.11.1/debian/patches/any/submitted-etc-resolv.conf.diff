@@ -1,0 +1,39 @@
+2009-11-08  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* resolv/res_init.c (__res_vinit): Initialize nameserver to the
+	loopback address if none specified.
+
+--- a/resolv/res_init.c
++++ b/resolv/res_init.c
+@@ -176,13 +176,6 @@ __res_vinit(res_state statp, int preinit) {
+ 		statp->id = res_randomid();
+ 	}
+ 
+-#ifdef USELOOPBACK
+-	statp->nsaddr.sin_addr = inet_makeaddr(IN_LOOPBACKNET, 1);
+-#else
+-	statp->nsaddr.sin_addr.s_addr = INADDR_ANY;
+-#endif
+-	statp->nsaddr.sin_family = AF_INET;
+-	statp->nsaddr.sin_port = htons(NAMESERVER_PORT);
+ 	statp->nscount = 0;
+ 	statp->ndots = 1;
+ 	statp->pfcode = 0;
+@@ -433,6 +426,16 @@ __res_vinit(res_state statp, int preinit) {
+ #endif
+ 	    (void) fclose(fp);
+ 	}
++	if (statp->nscount == 0) {
++	    statp->nscount = 1;
++#ifdef USELOOPBACK
++	    statp->nsaddr.sin_addr = inet_makeaddr(IN_LOOPBACKNET, 1);
++#else
++	    statp->nsaddr.sin_addr.s_addr = INADDR_ANY;
++#endif
++	    statp->nsaddr.sin_family = AF_INET;
++	    statp->nsaddr.sin_port = htons(NAMESERVER_PORT);
++	}
+ 	if (statp->defdname[0] == 0 &&
+ 	    __gethostname(buf, sizeof(statp->defdname) - 1) == 0 &&
+ 	    (cp = strchr(buf, '.')) != NULL)
+

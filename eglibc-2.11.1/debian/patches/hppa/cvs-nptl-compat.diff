@@ -1,0 +1,1694 @@
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/internaltypes.h b/ports/sysdeps/unix/sysv/linux/hppa/internaltypes.h
+--- a/ports/sysdeps/unix/sysv/linux/hppa/internaltypes.h	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/internaltypes.h	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,79 @@
++#include_next <internaltypes.h>
++#ifndef _INTERNAL_TYPES_H_HPPA_ 
++#define _INTERNAL_TYPES_H_HPPA_ 1
++#include <atomic.h>
++
++/* In GLIBC 2.10 HPPA switched from Linuxthreads to NPTL, and in order 
++to maintain ABI compatibility with pthread_cond_t, some care had to be
++taken.
++
++The NPTL pthread_cond_t grew in size. When HPPA switched to NPTL, we
++dropped the use of ldcw, and switched to the kernel helper routine for
++compare-and-swap.  This allowed HPPA to use the 4-word 16-byte aligned
++lock words, and alignment words to store the additional pthread_cond_t
++data. Once organized properly the new NPTL pthread_cond_t was 1 word
++smaller than the Linuxthreads version.
++
++However, we were faced with the case that users may have initialized the
++pthread_cond_t with PTHREAD_COND_INITIALIZER. In this case, the first
++four words were set to one, and must be cleared before any NPTL code
++used these words.
++
++We didn't want to use LDCW, because it continues to be a source of bugs
++when applications memset pthread_cond_t to all zeroes by accident. This
++works on all other architectures where lock words are unlocked at zero.
++Remember that because of the semantics of LDCW, a locked word is set to
++zero, and an unlocked word is set to 1.
++
++Instead we used atomic_compare_and_exchange_val_acq, but we couldn't use
++this on any of the pthread_cond_t words, otherwise it might interfere
++with the current operation of the structure. To solve this problem we
++used the left over word.
++
++If the stucture was initialized by a legacy Linuxthread
++PTHREAD_COND_INITIALIZER it contained a 1, and this indicates that the
++structure requires zeroing for NPTL. The first thread to come upon a
++pthread_cond_t with a 1 in the __initializer field, will
++compare-and-swap the value, placing a 2 there which will cause all other
++threads using the same pthread_cond_t to wait for the completion of the
++initialization. Lastly, we use a store (with memory barrier) to change
++__initializer from 2 to 0. Note that the store is strongly ordered, but
++we use the PA 1.1 compatible form which is ",ma" with zero offset.
++
++In the future, when the application is recompiled with NPTL
++PTHREAD_COND_INITIALIZER it will be a quick compare-and-swap, which
++fails because __initializer is zero, and the structure will be used as
++is correctly.  */
++
++#define cond_compat_clear(var) \
++({											\
++  int tmp = 0;										\
++  var->__data.__lock = 0;								\
++  var->__data.__futex = 0;								\
++  var->__data.__mutex = NULL;								\
++  /* Clear __initializer last, to indicate initialization is done.  */			\
++  __asm__ __volatile__ ("stw,ma %1,0(%0)"						\
++			: : "r" (&var->__data.__initializer), "r" (tmp) : "memory");	\
++})
++
++#define cond_compat_check_and_clear(var) \
++({								\
++  int ret;							\
++  volatile int *value = &var->__data.__initializer;		\
++  if ((ret = atomic_compare_and_exchange_val_acq(value, 2, 1)))	\
++    {								\
++      if (ret == 1)						\
++	{							\
++	  /* Initialize structure.  */				\
++	  cond_compat_clear (var);				\
++	}							\
++      else							\
++        {							\
++	  /* Yield until structure is initialized.  */		\
++	  while (*value == 2) sched_yield ();			\
++        }							\
++    }								\
++})
++
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/bits/pthreadtypes.h b/ports/sysdeps/unix/sysv/linux/hppa/nptl/bits/pthreadtypes.h
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/bits/pthreadtypes.h	2009-09-03 16:01:04.000000000 -0400
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/bits/pthreadtypes.h	2009-09-03 16:01:13.000000000 -0400
+@@ -34,7 +34,7 @@
+ #define __SIZEOF_PTHREAD_ATTR_T 36
+ #define __SIZEOF_PTHREAD_BARRIER_T 48
+ #define __SIZEOF_PTHREAD_BARRIERATTR_T 4
+-#define __SIZEOF_PTHREAD_COND_T 64
++#define __SIZEOF_PTHREAD_COND_T 48 
+ #define __SIZEOF_PTHREAD_CONDATTR_T 4
+ #define __SIZEOF_PTHREAD_MUTEX_T 48 
+ #define __SIZEOF_PTHREAD_MUTEXATTR_T 4
+@@ -64,18 +64,31 @@
+ {
+   struct __pthread_mutex_s
+   {
+-    int __lock;
++    /* Ensure that the entire structure when embedded in another
++       structure retains the same alignment requirements as it 
++       did in LinuxThreads, thus add aligned 16 here.  */
++    int __lock __attribute__ ((aligned(16)));
+     unsigned int __count;
+     int __owner;
+     /* KIND must stay at this position in the structure to maintain
+        binary compatibility.  */
+     int __kind;
++    /* The old 4-word 16-byte aligned lock. This is initalized
++       to all ones by the Linuxthreads PTHREAD_MUTEX_INITIALIZER. 
++       Unused in NPTL.  */
++    int __compat_padding[4];
++    /* In the old structure there are 4 words left due to alignment.
++       In NPTL two words are used.  */
+     unsigned int __nusers;
+     __extension__ union
+     {
+       int __spins;
+       __pthread_slist_t __list;
+     };
++    /* Two more words are left before the NPTL
++       pthread_mutex_t is larger than Linuxthreads.  */
++    int __reserved1;
++    int __reserved2;
+   } __data;
+   char __size[__SIZEOF_PTHREAD_MUTEX_T];
+   long int __align;
+@@ -89,19 +102,37 @@
+ 
+ 
+ /* Data structure for conditional variable handling.  The structure of
+-   the attribute type is not exposed on purpose.  */
++   the attribute type is not exposed on purpose. However, this structure
++   is exposed via PTHREAD_COND_INITIALIZER, and because of this, the
++   Linuxthreads version sets the first four ints to one. In the NPTL
++   version we must check, in every function using pthread_cond_t, 
++   for the static Linuxthreads initializer and clear the appropriate
++   words. */
+ typedef union
+ {
+   struct
+   {
+-    int __lock;
++    /* In the old Linuxthreads pthread_cond_t, this is the
++       start of the 4-word lock structure, the next four words
++       are set all to 1 by the Linuxthreads 
++       PTHREAD_COND_INITIALIZER.  */
++    int __lock __attribute__ ((aligned(16)));
++    /* Tracks the initialization of this structure:
++       0  initialized with NPTL PTHREAD_COND_INITIALIZER.
++       1  initialized with Linuxthreads PTHREAD_COND_INITIALIZER.
++       2  initialization in progress.  */
++    int __initializer;
+     unsigned int __futex;
++    void *__mutex;
++    /* In the old Linuxthreads this would have been the start
++       of the pthread_fastlock status word.  */
+     __extension__ unsigned long long int __total_seq;
+     __extension__ unsigned long long int __wakeup_seq;
+     __extension__ unsigned long long int __woken_seq;
+-    void *__mutex;
+     unsigned int __nwaiters;
+     unsigned int __broadcast_seq;
++    /* The NPTL pthread_cond_t is exactly the same size as
++       the Linuxthreads version, there are no words to spare.  */
+   } __data;
+   char __size[__SIZEOF_PTHREAD_COND_T];
+   __extension__ long long int __align;
+@@ -129,19 +160,34 @@
+ {
+   struct
+   {
++    /* In the old Linuxthreads pthread_rwlock_t, this is the
++       start of the 4-word 16-byte algned lock structure. The
++       next four words are all set to 1 by the Linuxthreads
++       PTHREAD_RWLOCK_INITIALIZER. We ignore them in NPTL.  */
++    int __compat_padding[4] __attribute__ ((aligned(16)));
+     int __lock;
+     unsigned int __nr_readers;
+     unsigned int __readers_wakeup;
+     unsigned int __writer_wakeup;
+     unsigned int __nr_readers_queued;
+     unsigned int __nr_writers_queued;
++    int __writer;
++    /* An unused word, reserved for future use. It was added
++       to maintain the location of the flags from the Linuxthreads
++       layout of this structure.  */
++    int __reserved1;
+     /* FLAGS must stay at this position in the structure to maintain
+        binary compatibility.  */
+     unsigned char __pad2;
+     unsigned char __pad1;
+     unsigned char __shared;
+     unsigned char __flags;
+-    int __writer;
++    /* The NPTL pthread_rwlock_t is 4 words smaller than the
++       Linuxthreads version. One word is in the middle of the
++       structure, the other three are at the end.  */
++    int __reserved2;
++    int __reserved3;
++    int __reserved4;
+   } __data;
+   char __size[__SIZEOF_PTHREAD_RWLOCK_T];
+   long int __align;
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_broadcast.c b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_broadcast.c
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_broadcast.c	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_broadcast.c	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,43 @@
++/* Copyright (C) 2009 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Carlos O'Donell <carlos@codesourcery.com>, 2009.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef INCLUDED_SELF
++# define INCLUDED_SELF
++# include <pthread_cond_broadcast.c>
++#else
++# include <pthread.h>
++# include <pthreadP.h>
++# include <internaltypes.h>
++# include <shlib-compat.h>
++int
++__pthread_cond_broadcast (cond)
++     pthread_cond_t *cond;
++{
++  cond_compat_check_and_clear (cond);
++  return __pthread_cond_broadcast_internal (cond);
++}
++versioned_symbol (libpthread, __pthread_cond_broadcast, pthread_cond_broadcast,
++                  GLIBC_2_3_2);
++# undef versioned_symbol
++# define versioned_symbol(lib, local, symbol, version)
++# undef __pthread_cond_broadcast
++# define __pthread_cond_broadcast __pthread_cond_broadcast_internal
++# include_next <pthread_cond_broadcast.c>
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_destroy.c b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_destroy.c
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_destroy.c	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_destroy.c	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,43 @@
++/* Copyright (C) 2009 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Carlos O'Donell <carlos@codesourcery.com>, 2009.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef INCLUDED_SELF
++# define INCLUDED_SELF
++# include <pthread_cond_destroy.c>
++#else
++# include <pthread.h>
++# include <pthreadP.h>
++# include <internaltypes.h>
++# include <shlib-compat.h>
++int
++__pthread_cond_destroy (cond)
++     pthread_cond_t *cond;
++{
++  cond_compat_check_and_clear (cond);
++  return __pthread_cond_destroy_internal (cond);
++}
++versioned_symbol (libpthread, __pthread_cond_destroy, pthread_cond_destroy,
++                  GLIBC_2_3_2);
++# undef versioned_symbol
++# define versioned_symbol(lib, local, symbol, version)
++# undef __pthread_cond_destroy
++# define __pthread_cond_destroy __pthread_cond_destroy_internal
++# include_next <pthread_cond_destroy.c>
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_init.c b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_init.c
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_init.c	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_init.c	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,44 @@
++/* Copyright (C) 2009 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Carlos O'Donell <carlos@codesourcery.com>, 2009.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef INCLUDED_SELF
++# define INCLUDED_SELF
++# include <pthread_cond_init.c>
++#else
++# include <pthread.h>
++# include <pthreadP.h>
++# include <internaltypes.h>
++# include <shlib-compat.h>
++int
++__pthread_cond_init (cond, cond_attr)
++     pthread_cond_t *cond;
++     const pthread_condattr_t *cond_attr;
++{
++  cond_compat_clear (cond);
++  return __pthread_cond_init_internal (cond, cond_attr);
++}
++versioned_symbol (libpthread, __pthread_cond_init, pthread_cond_init,
++                  GLIBC_2_3_2);
++# undef versioned_symbol
++# define versioned_symbol(lib, local, symbol, version)
++# undef __pthread_cond_init
++# define __pthread_cond_init __pthread_cond_init_internal
++# include_next <pthread_cond_init.c>
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_signal.c b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_signal.c
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_signal.c	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_signal.c	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,43 @@
++/* Copyright (C) 2009 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Carlos O'Donell <carlos@codesourcery.com>, 2009.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef INCLUDED_SELF
++# define INCLUDED_SELF
++# include <pthread_cond_signal.c>
++#else
++# include <pthread.h>
++# include <pthreadP.h>
++# include <internaltypes.h>
++# include <shlib-compat.h>
++int
++__pthread_cond_signal (cond)
++     pthread_cond_t *cond;
++{
++  cond_compat_check_and_clear (cond);
++  return __pthread_cond_signal_internal (cond);
++}
++versioned_symbol (libpthread, __pthread_cond_signal, pthread_cond_signal,
++                  GLIBC_2_3_2);
++# undef versioned_symbol
++# define versioned_symbol(lib, local, symbol, version)
++# undef __pthread_cond_signal
++# define __pthread_cond_signal __pthread_cond_signal_internal
++# include_next <pthread_cond_signal.c>
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_timedwait.c b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_timedwait.c
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_timedwait.c	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_timedwait.c	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,45 @@
++/* Copyright (C) 2009 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Carlos O'Donell <carlos@codesourcery.com>, 2009.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef INCLUDED_SELF
++# define INCLUDED_SELF
++# include <pthread_cond_timedwait.c>
++#else
++# include <pthread.h>
++# include <pthreadP.h>
++# include <internaltypes.h>
++# include <shlib-compat.h>
++int
++__pthread_cond_timedwait (cond, mutex, abstime)
++     pthread_cond_t *cond;
++     pthread_mutex_t *mutex;
++     const struct timespec *abstime;
++{
++  cond_compat_check_and_clear (cond);
++  return __pthread_cond_timedwait_internal (cond, mutex, abstime);
++}
++versioned_symbol (libpthread, __pthread_cond_timedwait, pthread_cond_timedwait,
++                  GLIBC_2_3_2);
++# undef versioned_symbol
++# define versioned_symbol(lib, local, symbol, version)
++# undef __pthread_cond_timedwait
++# define __pthread_cond_timedwait __pthread_cond_timedwait_internal
++# include_next <pthread_cond_timedwait.c>
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_wait.c b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_wait.c
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_wait.c	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread_cond_wait.c	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,44 @@
++/* Copyright (C) 2009 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Carlos O'Donell <carlos@codesourcery.com>, 2009.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef INCLUDED_SELF
++# define INCLUDED_SELF
++# include <pthread_cond_wait.c>
++#else
++# include <pthread.h>
++# include <pthreadP.h>
++# include <internaltypes.h>
++# include <shlib-compat.h>
++int
++__pthread_cond_wait (cond, mutex)
++     pthread_cond_t *cond;
++     pthread_mutex_t *mutex;
++{
++  cond_compat_check_and_clear (cond);
++  return __pthread_cond_wait_internal (cond, mutex);
++}
++versioned_symbol (libpthread, __pthread_cond_wait, pthread_cond_wait,
++                  GLIBC_2_3_2);
++# undef versioned_symbol
++# define versioned_symbol(lib, local, symbol, version)
++# undef __pthread_cond_wait
++# define __pthread_cond_wait __pthread_cond_wait_internal
++# include_next <pthread_cond_wait.c>
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread.h b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread.h
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread.h	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthread.h	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,1178 @@
++/* Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009
++   Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef _PTHREAD_H
++#define _PTHREAD_H	1
++
++#include <features.h>
++#include <endian.h>
++#include <sched.h>
++#include <time.h>
++
++#define __need_sigset_t
++#include <signal.h>
++#include <bits/pthreadtypes.h>
++#include <bits/setjmp.h>
++#include <bits/wordsize.h>
++
++
++/* Detach state.  */
++enum
++{
++  PTHREAD_CREATE_JOINABLE,
++#define PTHREAD_CREATE_JOINABLE	PTHREAD_CREATE_JOINABLE
++  PTHREAD_CREATE_DETACHED
++#define PTHREAD_CREATE_DETACHED	PTHREAD_CREATE_DETACHED
++};
++
++
++/* Mutex types.  */
++enum
++{
++  PTHREAD_MUTEX_TIMED_NP,
++  PTHREAD_MUTEX_RECURSIVE_NP,
++  PTHREAD_MUTEX_ERRORCHECK_NP,
++  PTHREAD_MUTEX_ADAPTIVE_NP
++#ifdef __USE_UNIX98
++  ,
++  PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_TIMED_NP,
++  PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE_NP,
++  PTHREAD_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ERRORCHECK_NP,
++  PTHREAD_MUTEX_DEFAULT = PTHREAD_MUTEX_NORMAL
++#endif
++#ifdef __USE_GNU
++  /* For compatibility.  */
++  , PTHREAD_MUTEX_FAST_NP = PTHREAD_MUTEX_TIMED_NP
++#endif
++};
++
++
++#ifdef __USE_XOPEN2K
++/* Robust mutex or not flags.  */
++enum
++{
++  PTHREAD_MUTEX_STALLED,
++  PTHREAD_MUTEX_STALLED_NP = PTHREAD_MUTEX_STALLED,
++  PTHREAD_MUTEX_ROBUST,
++  PTHREAD_MUTEX_ROBUST_NP = PTHREAD_MUTEX_ROBUST
++};
++#endif
++
++
++#ifdef __USE_UNIX98
++/* Mutex protocols.  */
++enum
++{
++  PTHREAD_PRIO_NONE,
++  PTHREAD_PRIO_INHERIT,
++  PTHREAD_PRIO_PROTECT
++};
++#endif
++
++
++/* Mutex initializers.  */
++#if __WORDSIZE == 64
++# define PTHREAD_MUTEX_INITIALIZER \
++  { { 0, 0, 0, 0, 0, 0, { 0, 0 } } }
++# ifdef __USE_GNU
++#  define PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, 0, PTHREAD_MUTEX_RECURSIVE_NP, 0, { 0, 0 } } }
++#  define PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, 0, PTHREAD_MUTEX_ERRORCHECK_NP, 0, { 0, 0 } } }
++#  define PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, 0, PTHREAD_MUTEX_ADAPTIVE_NP, 0, { 0, 0 } } }
++# endif
++#else
++# define PTHREAD_MUTEX_INITIALIZER \
++  { { 0, 0, 0, 0, 0, { 0 } } }
++# ifdef __USE_GNU
++#  define PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, PTHREAD_MUTEX_RECURSIVE_NP, 0, { 0 } } }
++#  define PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, PTHREAD_MUTEX_ERRORCHECK_NP, 0, { 0 } } }
++#  define PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, PTHREAD_MUTEX_ADAPTIVE_NP, 0, { 0 } } }
++# endif
++#endif
++
++
++/* Read-write lock types.  */
++#if defined __USE_UNIX98 || defined __USE_XOPEN2K
++enum
++{
++  PTHREAD_RWLOCK_PREFER_READER_NP,
++  PTHREAD_RWLOCK_PREFER_WRITER_NP,
++  PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP,
++  PTHREAD_RWLOCK_DEFAULT_NP = PTHREAD_RWLOCK_PREFER_READER_NP
++};
++
++/* Read-write lock initializers.  */
++# define PTHREAD_RWLOCK_INITIALIZER \
++  { { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
++# ifdef __USE_GNU
++#  if __WORDSIZE == 64
++#   define PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP \
++  { { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,					      \
++	PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP } }
++#  else
++#   if __BYTE_ORDER == __LITTLE_ENDIAN
++#    define PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP \
++  { { 0, 0, 0, 0, 0, 0, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP, \
++      0, 0, 0, 0 } }
++#   else
++#    define PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP \
++  { { 0, 0, 0, 0, 0, 0, 0, 0, 0, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP,\
++      0 } }
++#   endif
++#  endif
++# endif
++#endif  /* Unix98 or XOpen2K */
++
++
++/* Scheduler inheritance.  */
++enum
++{
++  PTHREAD_INHERIT_SCHED,
++#define PTHREAD_INHERIT_SCHED   PTHREAD_INHERIT_SCHED
++  PTHREAD_EXPLICIT_SCHED
++#define PTHREAD_EXPLICIT_SCHED  PTHREAD_EXPLICIT_SCHED
++};
++
++
++/* Scope handling.  */
++enum
++{
++  PTHREAD_SCOPE_SYSTEM,
++#define PTHREAD_SCOPE_SYSTEM    PTHREAD_SCOPE_SYSTEM
++  PTHREAD_SCOPE_PROCESS
++#define PTHREAD_SCOPE_PROCESS   PTHREAD_SCOPE_PROCESS
++};
++
++
++/* Process shared or private flag.  */
++enum
++{
++  PTHREAD_PROCESS_PRIVATE,
++#define PTHREAD_PROCESS_PRIVATE PTHREAD_PROCESS_PRIVATE
++  PTHREAD_PROCESS_SHARED
++#define PTHREAD_PROCESS_SHARED  PTHREAD_PROCESS_SHARED
++};
++
++
++
++/* Conditional variable handling.  */
++#define PTHREAD_COND_INITIALIZER { { 0, 0, 0, 0, 0, (void *) 0, 0, 0 } }
++
++
++/* Cleanup buffers */
++struct _pthread_cleanup_buffer
++{
++  void (*__routine) (void *);             /* Function to call.  */
++  void *__arg;                            /* Its argument.  */
++  int __canceltype;                       /* Saved cancellation type. */
++  struct _pthread_cleanup_buffer *__prev; /* Chaining of cleanup functions.  */
++};
++
++/* Cancellation */
++enum
++{
++  PTHREAD_CANCEL_ENABLE,
++#define PTHREAD_CANCEL_ENABLE   PTHREAD_CANCEL_ENABLE
++  PTHREAD_CANCEL_DISABLE
++#define PTHREAD_CANCEL_DISABLE  PTHREAD_CANCEL_DISABLE
++};
++enum
++{
++  PTHREAD_CANCEL_DEFERRED,
++#define PTHREAD_CANCEL_DEFERRED	PTHREAD_CANCEL_DEFERRED
++  PTHREAD_CANCEL_ASYNCHRONOUS
++#define PTHREAD_CANCEL_ASYNCHRONOUS	PTHREAD_CANCEL_ASYNCHRONOUS
++};
++#define PTHREAD_CANCELED ((void *) -1)
++
++
++/* Single execution handling.  */
++#define PTHREAD_ONCE_INIT 0
++
++
++#ifdef __USE_XOPEN2K
++/* Value returned by 'pthread_barrier_wait' for one of the threads after
++   the required number of threads have called this function.
++   -1 is distinct from 0 and all errno constants */
++# define PTHREAD_BARRIER_SERIAL_THREAD -1
++#endif
++
++
++__BEGIN_DECLS
++
++/* Create a new thread, starting with execution of START-ROUTINE
++   getting passed ARG.  Creation attributed come from ATTR.  The new
++   handle is stored in *NEWTHREAD.  */
++extern int pthread_create (pthread_t *__restrict __newthread,
++			   __const pthread_attr_t *__restrict __attr,
++			   void *(*__start_routine) (void *),
++			   void *__restrict __arg) __THROW __nonnull ((1, 3));
++
++/* Terminate calling thread.
++
++   The registered cleanup handlers are called via exception handling
++   so we cannot mark this function with __THROW.*/
++extern void pthread_exit (void *__retval) __attribute__ ((__noreturn__));
++
++/* Make calling thread wait for termination of the thread TH.  The
++   exit status of the thread is stored in *THREAD_RETURN, if THREAD_RETURN
++   is not NULL.
++
++   This function is a cancellation point and therefore not marked with
++   __THROW.  */
++extern int pthread_join (pthread_t __th, void **__thread_return);
++
++#ifdef __USE_GNU
++/* Check whether thread TH has terminated.  If yes return the status of
++   the thread in *THREAD_RETURN, if THREAD_RETURN is not NULL.  */
++extern int pthread_tryjoin_np (pthread_t __th, void **__thread_return) __THROW;
++
++/* Make calling thread wait for termination of the thread TH, but only
++   until TIMEOUT.  The exit status of the thread is stored in
++   *THREAD_RETURN, if THREAD_RETURN is not NULL.
++
++   This function is a cancellation point and therefore not marked with
++   __THROW.  */
++extern int pthread_timedjoin_np (pthread_t __th, void **__thread_return,
++				 __const struct timespec *__abstime);
++#endif
++
++/* Indicate that the thread TH is never to be joined with PTHREAD_JOIN.
++   The resources of TH will therefore be freed immediately when it
++   terminates, instead of waiting for another thread to perform PTHREAD_JOIN
++   on it.  */
++extern int pthread_detach (pthread_t __th) __THROW;
++
++
++/* Obtain the identifier of the current thread.  */
++extern pthread_t pthread_self (void) __THROW __attribute__ ((__const__));
++
++/* Compare two thread identifiers.  */
++extern int pthread_equal (pthread_t __thread1, pthread_t __thread2) __THROW;
++
++
++/* Thread attribute handling.  */
++
++/* Initialize thread attribute *ATTR with default attributes
++   (detachstate is PTHREAD_JOINABLE, scheduling policy is SCHED_OTHER,
++    no user-provided stack).  */
++extern int pthread_attr_init (pthread_attr_t *__attr) __THROW __nonnull ((1));
++
++/* Destroy thread attribute *ATTR.  */
++extern int pthread_attr_destroy (pthread_attr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Get detach state attribute.  */
++extern int pthread_attr_getdetachstate (__const pthread_attr_t *__attr,
++					int *__detachstate)
++     __THROW __nonnull ((1, 2));
++
++/* Set detach state attribute.  */
++extern int pthread_attr_setdetachstate (pthread_attr_t *__attr,
++					int __detachstate)
++     __THROW __nonnull ((1));
++
++
++/* Get the size of the guard area created for stack overflow protection.  */
++extern int pthread_attr_getguardsize (__const pthread_attr_t *__attr,
++				      size_t *__guardsize)
++     __THROW __nonnull ((1, 2));
++
++/* Set the size of the guard area created for stack overflow protection.  */
++extern int pthread_attr_setguardsize (pthread_attr_t *__attr,
++				      size_t __guardsize)
++     __THROW __nonnull ((1));
++
++
++/* Return in *PARAM the scheduling parameters of *ATTR.  */
++extern int pthread_attr_getschedparam (__const pthread_attr_t *__restrict
++				       __attr,
++				       struct sched_param *__restrict __param)
++     __THROW __nonnull ((1, 2));
++
++/* Set scheduling parameters (priority, etc) in *ATTR according to PARAM.  */
++extern int pthread_attr_setschedparam (pthread_attr_t *__restrict __attr,
++				       __const struct sched_param *__restrict
++				       __param) __THROW __nonnull ((1, 2));
++
++/* Return in *POLICY the scheduling policy of *ATTR.  */
++extern int pthread_attr_getschedpolicy (__const pthread_attr_t *__restrict
++					__attr, int *__restrict __policy)
++     __THROW __nonnull ((1, 2));
++
++/* Set scheduling policy in *ATTR according to POLICY.  */
++extern int pthread_attr_setschedpolicy (pthread_attr_t *__attr, int __policy)
++     __THROW __nonnull ((1));
++
++/* Return in *INHERIT the scheduling inheritance mode of *ATTR.  */
++extern int pthread_attr_getinheritsched (__const pthread_attr_t *__restrict
++					 __attr, int *__restrict __inherit)
++     __THROW __nonnull ((1, 2));
++
++/* Set scheduling inheritance mode in *ATTR according to INHERIT.  */
++extern int pthread_attr_setinheritsched (pthread_attr_t *__attr,
++					 int __inherit)
++     __THROW __nonnull ((1));
++
++
++/* Return in *SCOPE the scheduling contention scope of *ATTR.  */
++extern int pthread_attr_getscope (__const pthread_attr_t *__restrict __attr,
++				  int *__restrict __scope)
++     __THROW __nonnull ((1, 2));
++
++/* Set scheduling contention scope in *ATTR according to SCOPE.  */
++extern int pthread_attr_setscope (pthread_attr_t *__attr, int __scope)
++     __THROW __nonnull ((1));
++
++/* Return the previously set address for the stack.  */
++extern int pthread_attr_getstackaddr (__const pthread_attr_t *__restrict
++				      __attr, void **__restrict __stackaddr)
++     __THROW __nonnull ((1, 2)) __attribute_deprecated__;
++
++/* Set the starting address of the stack of the thread to be created.
++   Depending on whether the stack grows up or down the value must either
++   be higher or lower than all the address in the memory block.  The
++   minimal size of the block must be PTHREAD_STACK_MIN.  */
++extern int pthread_attr_setstackaddr (pthread_attr_t *__attr,
++				      void *__stackaddr)
++     __THROW __nonnull ((1)) __attribute_deprecated__;
++
++/* Return the currently used minimal stack size.  */
++extern int pthread_attr_getstacksize (__const pthread_attr_t *__restrict
++				      __attr, size_t *__restrict __stacksize)
++     __THROW __nonnull ((1, 2));
++
++/* Add information about the minimum stack size needed for the thread
++   to be started.  This size must never be less than PTHREAD_STACK_MIN
++   and must also not exceed the system limits.  */
++extern int pthread_attr_setstacksize (pthread_attr_t *__attr,
++				      size_t __stacksize)
++     __THROW __nonnull ((1));
++
++#ifdef __USE_XOPEN2K
++/* Return the previously set address for the stack.  */
++extern int pthread_attr_getstack (__const pthread_attr_t *__restrict __attr,
++				  void **__restrict __stackaddr,
++				  size_t *__restrict __stacksize)
++     __THROW __nonnull ((1, 2, 3));
++
++/* The following two interfaces are intended to replace the last two.  They
++   require setting the address as well as the size since only setting the
++   address will make the implementation on some architectures impossible.  */
++extern int pthread_attr_setstack (pthread_attr_t *__attr, void *__stackaddr,
++				  size_t __stacksize) __THROW __nonnull ((1));
++#endif
++
++#ifdef __USE_GNU
++/* Thread created with attribute ATTR will be limited to run only on
++   the processors represented in CPUSET.  */
++extern int pthread_attr_setaffinity_np (pthread_attr_t *__attr,
++					size_t __cpusetsize,
++					__const cpu_set_t *__cpuset)
++     __THROW __nonnull ((1, 3));
++
++/* Get bit set in CPUSET representing the processors threads created with
++   ATTR can run on.  */
++extern int pthread_attr_getaffinity_np (__const pthread_attr_t *__attr,
++					size_t __cpusetsize,
++					cpu_set_t *__cpuset)
++     __THROW __nonnull ((1, 3));
++
++
++/* Initialize thread attribute *ATTR with attributes corresponding to the
++   already running thread TH.  It shall be called on uninitialized ATTR
++   and destroyed with pthread_attr_destroy when no longer needed.  */
++extern int pthread_getattr_np (pthread_t __th, pthread_attr_t *__attr)
++     __THROW __nonnull ((2));
++#endif
++
++
++/* Functions for scheduling control.  */
++
++/* Set the scheduling parameters for TARGET_THREAD according to POLICY
++   and *PARAM.  */
++extern int pthread_setschedparam (pthread_t __target_thread, int __policy,
++				  __const struct sched_param *__param)
++     __THROW __nonnull ((3));
++
++/* Return in *POLICY and *PARAM the scheduling parameters for TARGET_THREAD. */
++extern int pthread_getschedparam (pthread_t __target_thread,
++				  int *__restrict __policy,
++				  struct sched_param *__restrict __param)
++     __THROW __nonnull ((2, 3));
++
++/* Set the scheduling priority for TARGET_THREAD.  */
++extern int pthread_setschedprio (pthread_t __target_thread, int __prio)
++     __THROW;
++
++
++#ifdef __USE_UNIX98
++/* Determine level of concurrency.  */
++extern int pthread_getconcurrency (void) __THROW;
++
++/* Set new concurrency level to LEVEL.  */
++extern int pthread_setconcurrency (int __level) __THROW;
++#endif
++
++#ifdef __USE_GNU
++/* Yield the processor to another thread or process.
++   This function is similar to the POSIX `sched_yield' function but
++   might be differently implemented in the case of a m-on-n thread
++   implementation.  */
++extern int pthread_yield (void) __THROW;
++
++
++/* Limit specified thread TH to run only on the processors represented
++   in CPUSET.  */
++extern int pthread_setaffinity_np (pthread_t __th, size_t __cpusetsize,
++				   __const cpu_set_t *__cpuset)
++     __THROW __nonnull ((3));
++
++/* Get bit set in CPUSET representing the processors TH can run on.  */
++extern int pthread_getaffinity_np (pthread_t __th, size_t __cpusetsize,
++				   cpu_set_t *__cpuset)
++     __THROW __nonnull ((3));
++#endif
++
++
++/* Functions for handling initialization.  */
++
++/* Guarantee that the initialization function INIT_ROUTINE will be called
++   only once, even if pthread_once is executed several times with the
++   same ONCE_CONTROL argument. ONCE_CONTROL must point to a static or
++   extern variable initialized to PTHREAD_ONCE_INIT.
++
++   The initialization functions might throw exception which is why
++   this function is not marked with __THROW.  */
++extern int pthread_once (pthread_once_t *__once_control,
++			 void (*__init_routine) (void)) __nonnull ((1, 2));
++
++
++/* Functions for handling cancellation.
++
++   Note that these functions are explicitly not marked to not throw an
++   exception in C++ code.  If cancellation is implemented by unwinding
++   this is necessary to have the compiler generate the unwind information.  */
++
++/* Set cancelability state of current thread to STATE, returning old
++   state in *OLDSTATE if OLDSTATE is not NULL.  */
++extern int pthread_setcancelstate (int __state, int *__oldstate);
++
++/* Set cancellation state of current thread to TYPE, returning the old
++   type in *OLDTYPE if OLDTYPE is not NULL.  */
++extern int pthread_setcanceltype (int __type, int *__oldtype);
++
++/* Cancel THREAD immediately or at the next possibility.  */
++extern int pthread_cancel (pthread_t __th);
++
++/* Test for pending cancellation for the current thread and terminate
++   the thread as per pthread_exit(PTHREAD_CANCELED) if it has been
++   cancelled.  */
++extern void pthread_testcancel (void);
++
++
++/* Cancellation handling with integration into exception handling.  */
++
++typedef struct
++{
++  struct
++  {
++    __jmp_buf __cancel_jmp_buf;
++    int __mask_was_saved;
++  } __cancel_jmp_buf[1];
++  void *__pad[4];
++} __pthread_unwind_buf_t __attribute__ ((__aligned__));
++
++/* No special attributes by default.  */
++#ifndef __cleanup_fct_attribute
++# define __cleanup_fct_attribute
++#endif
++
++
++/* Structure to hold the cleanup handler information.  */
++struct __pthread_cleanup_frame
++{
++  void (*__cancel_routine) (void *);
++  void *__cancel_arg;
++  int __do_it;
++  int __cancel_type;
++};
++
++#if defined __GNUC__ && defined __EXCEPTIONS
++# ifdef __cplusplus
++/* Class to handle cancellation handler invocation.  */
++class __pthread_cleanup_class
++{
++  void (*__cancel_routine) (void *);
++  void *__cancel_arg;
++  int __do_it;
++  int __cancel_type;
++
++ public:
++  __pthread_cleanup_class (void (*__fct) (void *), void *__arg)
++    : __cancel_routine (__fct), __cancel_arg (__arg), __do_it (1) { }
++  ~__pthread_cleanup_class () { if (__do_it) __cancel_routine (__cancel_arg); }
++  void __setdoit (int __newval) { __do_it = __newval; }
++  void __defer () { pthread_setcanceltype (PTHREAD_CANCEL_DEFERRED,
++					   &__cancel_type); }
++  void __restore () const { pthread_setcanceltype (__cancel_type, 0); }
++};
++
++/* Install a cleanup handler: ROUTINE will be called with arguments ARG
++   when the thread is canceled or calls pthread_exit.  ROUTINE will also
++   be called with arguments ARG when the matching pthread_cleanup_pop
++   is executed with non-zero EXECUTE argument.
++
++   pthread_cleanup_push and pthread_cleanup_pop are macros and must always
++   be used in matching pairs at the same nesting level of braces.  */
++#  define pthread_cleanup_push(routine, arg) \
++  do {									      \
++    __pthread_cleanup_class __clframe (routine, arg)
++
++/* Remove a cleanup handler installed by the matching pthread_cleanup_push.
++   If EXECUTE is non-zero, the handler function is called. */
++#  define pthread_cleanup_pop(execute) \
++    __clframe.__setdoit (execute);					      \
++  } while (0)
++
++#  ifdef __USE_GNU
++/* Install a cleanup handler as pthread_cleanup_push does, but also
++   saves the current cancellation type and sets it to deferred
++   cancellation.  */
++#   define pthread_cleanup_push_defer_np(routine, arg) \
++  do {									      \
++    __pthread_cleanup_class __clframe (routine, arg);			      \
++    __clframe.__defer ()
++
++/* Remove a cleanup handler as pthread_cleanup_pop does, but also
++   restores the cancellation type that was in effect when the matching
++   pthread_cleanup_push_defer was called.  */
++#   define pthread_cleanup_pop_restore_np(execute) \
++    __clframe.__restore ();						      \
++    __clframe.__setdoit (execute);					      \
++  } while (0)
++#  endif
++# else
++/* Function called to call the cleanup handler.  As an extern inline
++   function the compiler is free to decide inlining the change when
++   needed or fall back on the copy which must exist somewhere
++   else.  */
++__extern_inline void
++__pthread_cleanup_routine (struct __pthread_cleanup_frame *__frame)
++{
++  if (__frame->__do_it)
++    __frame->__cancel_routine (__frame->__cancel_arg);
++}
++
++/* Install a cleanup handler: ROUTINE will be called with arguments ARG
++   when the thread is canceled or calls pthread_exit.  ROUTINE will also
++   be called with arguments ARG when the matching pthread_cleanup_pop
++   is executed with non-zero EXECUTE argument.
++
++   pthread_cleanup_push and pthread_cleanup_pop are macros and must always
++   be used in matching pairs at the same nesting level of braces.  */
++#  define pthread_cleanup_push(routine, arg) \
++  do {									      \
++    struct __pthread_cleanup_frame __clframe				      \
++      __attribute__ ((__cleanup__ (__pthread_cleanup_routine)))		      \
++      = { .__cancel_routine = (routine), .__cancel_arg = (arg),	 	      \
++	  .__do_it = 1 };
++
++/* Remove a cleanup handler installed by the matching pthread_cleanup_push.
++   If EXECUTE is non-zero, the handler function is called. */
++#  define pthread_cleanup_pop(execute) \
++    __clframe.__do_it = (execute);					      \
++  } while (0)
++
++#  ifdef __USE_GNU
++/* Install a cleanup handler as pthread_cleanup_push does, but also
++   saves the current cancellation type and sets it to deferred
++   cancellation.  */
++#   define pthread_cleanup_push_defer_np(routine, arg) \
++  do {									      \
++    struct __pthread_cleanup_frame __clframe				      \
++      __attribute__ ((__cleanup__ (__pthread_cleanup_routine)))		      \
++      = { .__cancel_routine = (routine), .__cancel_arg = (arg),		      \
++	  .__do_it = 1 };						      \
++    (void) pthread_setcanceltype (PTHREAD_CANCEL_DEFERRED,		      \
++				  &__clframe.__cancel_type)
++
++/* Remove a cleanup handler as pthread_cleanup_pop does, but also
++   restores the cancellation type that was in effect when the matching
++   pthread_cleanup_push_defer was called.  */
++#   define pthread_cleanup_pop_restore_np(execute) \
++    (void) pthread_setcanceltype (__clframe.__cancel_type, NULL);	      \
++    __clframe.__do_it = (execute);					      \
++  } while (0)
++#  endif
++# endif
++#else
++/* Install a cleanup handler: ROUTINE will be called with arguments ARG
++   when the thread is canceled or calls pthread_exit.  ROUTINE will also
++   be called with arguments ARG when the matching pthread_cleanup_pop
++   is executed with non-zero EXECUTE argument.
++
++   pthread_cleanup_push and pthread_cleanup_pop are macros and must always
++   be used in matching pairs at the same nesting level of braces.  */
++# define pthread_cleanup_push(routine, arg) \
++  do {									      \
++    __pthread_unwind_buf_t __cancel_buf;				      \
++    void (*__cancel_routine) (void *) = (routine);			      \
++    void *__cancel_arg = (arg);						      \
++    int not_first_call = __sigsetjmp ((struct __jmp_buf_tag *) (void *)	      \
++				      __cancel_buf.__cancel_jmp_buf, 0);      \
++    if (__builtin_expect (not_first_call, 0))				      \
++      {									      \
++	__cancel_routine (__cancel_arg);				      \
++	__pthread_unwind_next (&__cancel_buf);				      \
++	/* NOTREACHED */						      \
++      }									      \
++									      \
++    __pthread_register_cancel (&__cancel_buf);				      \
++    do {
++extern void __pthread_register_cancel (__pthread_unwind_buf_t *__buf)
++     __cleanup_fct_attribute;
++
++/* Remove a cleanup handler installed by the matching pthread_cleanup_push.
++   If EXECUTE is non-zero, the handler function is called. */
++# define pthread_cleanup_pop(execute) \
++      do { } while (0);/* Empty to allow label before pthread_cleanup_pop.  */\
++    } while (0);							      \
++    __pthread_unregister_cancel (&__cancel_buf);			      \
++    if (execute)							      \
++      __cancel_routine (__cancel_arg);					      \
++  } while (0)
++extern void __pthread_unregister_cancel (__pthread_unwind_buf_t *__buf)
++  __cleanup_fct_attribute;
++
++# ifdef __USE_GNU
++/* Install a cleanup handler as pthread_cleanup_push does, but also
++   saves the current cancellation type and sets it to deferred
++   cancellation.  */
++#  define pthread_cleanup_push_defer_np(routine, arg) \
++  do {									      \
++    __pthread_unwind_buf_t __cancel_buf;				      \
++    void (*__cancel_routine) (void *) = (routine);			      \
++    void *__cancel_arg = (arg);						      \
++    int not_first_call = __sigsetjmp ((struct __jmp_buf_tag *) (void *)	      \
++				      __cancel_buf.__cancel_jmp_buf, 0);      \
++    if (__builtin_expect (not_first_call, 0))				      \
++      {									      \
++	__cancel_routine (__cancel_arg);				      \
++	__pthread_unwind_next (&__cancel_buf);				      \
++	/* NOTREACHED */						      \
++      }									      \
++									      \
++    __pthread_register_cancel_defer (&__cancel_buf);			      \
++    do {
++extern void __pthread_register_cancel_defer (__pthread_unwind_buf_t *__buf)
++     __cleanup_fct_attribute;
++
++/* Remove a cleanup handler as pthread_cleanup_pop does, but also
++   restores the cancellation type that was in effect when the matching
++   pthread_cleanup_push_defer was called.  */
++#  define pthread_cleanup_pop_restore_np(execute) \
++      do { } while (0);/* Empty to allow label before pthread_cleanup_pop.  */\
++    } while (0);							      \
++    __pthread_unregister_cancel_restore (&__cancel_buf);		      \
++    if (execute)							      \
++      __cancel_routine (__cancel_arg);					      \
++  } while (0)
++extern void __pthread_unregister_cancel_restore (__pthread_unwind_buf_t *__buf)
++  __cleanup_fct_attribute;
++# endif
++
++/* Internal interface to initiate cleanup.  */
++extern void __pthread_unwind_next (__pthread_unwind_buf_t *__buf)
++     __cleanup_fct_attribute __attribute__ ((__noreturn__))
++# ifndef SHARED
++     __attribute__ ((__weak__))
++# endif
++     ;
++#endif
++
++/* Function used in the macros.  */
++struct __jmp_buf_tag;
++extern int __sigsetjmp (struct __jmp_buf_tag *__env, int __savemask) __THROW;
++
++
++/* Mutex handling.  */
++
++/* Initialize a mutex.  */
++extern int pthread_mutex_init (pthread_mutex_t *__mutex,
++			       __const pthread_mutexattr_t *__mutexattr)
++     __THROW __nonnull ((1));
++
++/* Destroy a mutex.  */
++extern int pthread_mutex_destroy (pthread_mutex_t *__mutex)
++     __THROW __nonnull ((1));
++
++/* Try locking a mutex.  */
++extern int pthread_mutex_trylock (pthread_mutex_t *__mutex)
++     __THROW __nonnull ((1));
++
++/* Lock a mutex.  */
++extern int pthread_mutex_lock (pthread_mutex_t *__mutex)
++     __THROW __nonnull ((1));
++
++#ifdef __USE_XOPEN2K
++/* Wait until lock becomes available, or specified time passes. */
++extern int pthread_mutex_timedlock (pthread_mutex_t *__restrict __mutex,
++                                    __const struct timespec *__restrict
++                                    __abstime) __THROW __nonnull ((1, 2));
++#endif
++
++/* Unlock a mutex.  */
++extern int pthread_mutex_unlock (pthread_mutex_t *__mutex)
++     __THROW __nonnull ((1));
++
++
++#ifdef __USE_UNIX98
++/* Get the priority ceiling of MUTEX.  */
++extern int pthread_mutex_getprioceiling (__const pthread_mutex_t *
++					 __restrict __mutex,
++					 int *__restrict __prioceiling)
++     __THROW __nonnull ((1, 2));
++
++/* Set the priority ceiling of MUTEX to PRIOCEILING, return old
++   priority ceiling value in *OLD_CEILING.  */
++extern int pthread_mutex_setprioceiling (pthread_mutex_t *__restrict __mutex,
++					 int __prioceiling,
++					 int *__restrict __old_ceiling)
++     __THROW __nonnull ((1, 3));
++#endif
++
++
++#ifdef __USE_XOPEN2K8
++/* Declare the state protected by MUTEX as consistent.  */
++extern int pthread_mutex_consistent_np (pthread_mutex_t *__mutex)
++     __THROW __nonnull ((1));
++# ifdef __USE_GNU
++extern int pthread_mutex_consistent_np (pthread_mutex_t *__mutex)
++     __THROW __nonnull ((1));
++# endif
++#endif
++
++
++/* Functions for handling mutex attributes.  */
++
++/* Initialize mutex attribute object ATTR with default attributes
++   (kind is PTHREAD_MUTEX_TIMED_NP).  */
++extern int pthread_mutexattr_init (pthread_mutexattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Destroy mutex attribute object ATTR.  */
++extern int pthread_mutexattr_destroy (pthread_mutexattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Get the process-shared flag of the mutex attribute ATTR.  */
++extern int pthread_mutexattr_getpshared (__const pthread_mutexattr_t *
++					 __restrict __attr,
++					 int *__restrict __pshared)
++     __THROW __nonnull ((1, 2));
++
++/* Set the process-shared flag of the mutex attribute ATTR.  */
++extern int pthread_mutexattr_setpshared (pthread_mutexattr_t *__attr,
++					 int __pshared)
++     __THROW __nonnull ((1));
++
++#ifdef __USE_UNIX98
++/* Return in *KIND the mutex kind attribute in *ATTR.  */
++extern int pthread_mutexattr_gettype (__const pthread_mutexattr_t *__restrict
++				      __attr, int *__restrict __kind)
++     __THROW __nonnull ((1, 2));
++
++/* Set the mutex kind attribute in *ATTR to KIND (either PTHREAD_MUTEX_NORMAL,
++   PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK, or
++   PTHREAD_MUTEX_DEFAULT).  */
++extern int pthread_mutexattr_settype (pthread_mutexattr_t *__attr, int __kind)
++     __THROW __nonnull ((1));
++
++/* Return in *PROTOCOL the mutex protocol attribute in *ATTR.  */
++extern int pthread_mutexattr_getprotocol (__const pthread_mutexattr_t *
++					  __restrict __attr,
++					  int *__restrict __protocol)
++     __THROW __nonnull ((1, 2));
++
++/* Set the mutex protocol attribute in *ATTR to PROTOCOL (either
++   PTHREAD_PRIO_NONE, PTHREAD_PRIO_INHERIT, or PTHREAD_PRIO_PROTECT).  */
++extern int pthread_mutexattr_setprotocol (pthread_mutexattr_t *__attr,
++					  int __protocol)
++     __THROW __nonnull ((1));
++
++/* Return in *PRIOCEILING the mutex prioceiling attribute in *ATTR.  */
++extern int pthread_mutexattr_getprioceiling (__const pthread_mutexattr_t *
++					     __restrict __attr,
++					     int *__restrict __prioceiling)
++     __THROW __nonnull ((1, 2));
++
++/* Set the mutex prioceiling attribute in *ATTR to PRIOCEILING.  */
++extern int pthread_mutexattr_setprioceiling (pthread_mutexattr_t *__attr,
++					     int __prioceiling)
++     __THROW __nonnull ((1));
++#endif
++
++#ifdef __USE_XOPEN2K
++/* Get the robustness flag of the mutex attribute ATTR.  */
++extern int pthread_mutexattr_getrobust (__const pthread_mutexattr_t *__attr,
++					int *__robustness)
++     __THROW __nonnull ((1, 2));
++# ifdef __USE_GNU
++extern int pthread_mutexattr_getrobust_np (__const pthread_mutexattr_t *__attr,
++					   int *__robustness)
++     __THROW __nonnull ((1, 2));
++# endif
++
++/* Set the robustness flag of the mutex attribute ATTR.  */
++extern int pthread_mutexattr_setrobust (pthread_mutexattr_t *__attr,
++					int __robustness)
++     __THROW __nonnull ((1));
++# ifdef __USE_GNU
++extern int pthread_mutexattr_setrobust_np (pthread_mutexattr_t *__attr,
++					   int __robustness)
++     __THROW __nonnull ((1));
++# endif
++#endif
++
++
++#if defined __USE_UNIX98 || defined __USE_XOPEN2K
++/* Functions for handling read-write locks.  */
++
++/* Initialize read-write lock RWLOCK using attributes ATTR, or use
++   the default values if later is NULL.  */
++extern int pthread_rwlock_init (pthread_rwlock_t *__restrict __rwlock,
++				__const pthread_rwlockattr_t *__restrict
++				__attr) __THROW __nonnull ((1));
++
++/* Destroy read-write lock RWLOCK.  */
++extern int pthread_rwlock_destroy (pthread_rwlock_t *__rwlock)
++     __THROW __nonnull ((1));
++
++/* Acquire read lock for RWLOCK.  */
++extern int pthread_rwlock_rdlock (pthread_rwlock_t *__rwlock)
++     __THROW __nonnull ((1));
++
++/* Try to acquire read lock for RWLOCK.  */
++extern int pthread_rwlock_tryrdlock (pthread_rwlock_t *__rwlock)
++  __THROW __nonnull ((1));
++
++# ifdef __USE_XOPEN2K
++/* Try to acquire read lock for RWLOCK or return after specfied time.  */
++extern int pthread_rwlock_timedrdlock (pthread_rwlock_t *__restrict __rwlock,
++				       __const struct timespec *__restrict
++				       __abstime) __THROW __nonnull ((1, 2));
++# endif
++
++/* Acquire write lock for RWLOCK.  */
++extern int pthread_rwlock_wrlock (pthread_rwlock_t *__rwlock)
++     __THROW __nonnull ((1));
++
++/* Try to acquire write lock for RWLOCK.  */
++extern int pthread_rwlock_trywrlock (pthread_rwlock_t *__rwlock)
++     __THROW __nonnull ((1));
++
++# ifdef __USE_XOPEN2K
++/* Try to acquire write lock for RWLOCK or return after specfied time.  */
++extern int pthread_rwlock_timedwrlock (pthread_rwlock_t *__restrict __rwlock,
++				       __const struct timespec *__restrict
++				       __abstime) __THROW __nonnull ((1, 2));
++# endif
++
++/* Unlock RWLOCK.  */
++extern int pthread_rwlock_unlock (pthread_rwlock_t *__rwlock)
++     __THROW __nonnull ((1));
++
++
++/* Functions for handling read-write lock attributes.  */
++
++/* Initialize attribute object ATTR with default values.  */
++extern int pthread_rwlockattr_init (pthread_rwlockattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Destroy attribute object ATTR.  */
++extern int pthread_rwlockattr_destroy (pthread_rwlockattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Return current setting of process-shared attribute of ATTR in PSHARED.  */
++extern int pthread_rwlockattr_getpshared (__const pthread_rwlockattr_t *
++					  __restrict __attr,
++					  int *__restrict __pshared)
++     __THROW __nonnull ((1, 2));
++
++/* Set process-shared attribute of ATTR to PSHARED.  */
++extern int pthread_rwlockattr_setpshared (pthread_rwlockattr_t *__attr,
++					  int __pshared)
++     __THROW __nonnull ((1));
++
++/* Return current setting of reader/writer preference.  */
++extern int pthread_rwlockattr_getkind_np (__const pthread_rwlockattr_t *
++					  __restrict __attr,
++					  int *__restrict __pref)
++     __THROW __nonnull ((1, 2));
++
++/* Set reader/write preference.  */
++extern int pthread_rwlockattr_setkind_np (pthread_rwlockattr_t *__attr,
++					  int __pref) __THROW __nonnull ((1));
++#endif
++
++
++/* Functions for handling conditional variables.  */
++
++/* Initialize condition variable COND using attributes ATTR, or use
++   the default values if later is NULL.  */
++extern int pthread_cond_init (pthread_cond_t *__restrict __cond,
++			      __const pthread_condattr_t *__restrict
++			      __cond_attr) __THROW __nonnull ((1));
++
++/* Destroy condition variable COND.  */
++extern int pthread_cond_destroy (pthread_cond_t *__cond)
++     __THROW __nonnull ((1));
++
++/* Wake up one thread waiting for condition variable COND.  */
++extern int pthread_cond_signal (pthread_cond_t *__cond)
++     __THROW __nonnull ((1));
++
++/* Wake up all threads waiting for condition variables COND.  */
++extern int pthread_cond_broadcast (pthread_cond_t *__cond)
++     __THROW __nonnull ((1));
++
++/* Wait for condition variable COND to be signaled or broadcast.
++   MUTEX is assumed to be locked before.
++
++   This function is a cancellation point and therefore not marked with
++   __THROW.  */
++extern int pthread_cond_wait (pthread_cond_t *__restrict __cond,
++			      pthread_mutex_t *__restrict __mutex)
++     __nonnull ((1, 2));
++
++/* Wait for condition variable COND to be signaled or broadcast until
++   ABSTIME.  MUTEX is assumed to be locked before.  ABSTIME is an
++   absolute time specification; zero is the beginning of the epoch
++   (00:00:00 GMT, January 1, 1970).
++
++   This function is a cancellation point and therefore not marked with
++   __THROW.  */
++extern int pthread_cond_timedwait (pthread_cond_t *__restrict __cond,
++				   pthread_mutex_t *__restrict __mutex,
++				   __const struct timespec *__restrict
++				   __abstime) __nonnull ((1, 2, 3));
++
++/* Functions for handling condition variable attributes.  */
++
++/* Initialize condition variable attribute ATTR.  */
++extern int pthread_condattr_init (pthread_condattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Destroy condition variable attribute ATTR.  */
++extern int pthread_condattr_destroy (pthread_condattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Get the process-shared flag of the condition variable attribute ATTR.  */
++extern int pthread_condattr_getpshared (__const pthread_condattr_t *
++                                        __restrict __attr,
++                                        int *__restrict __pshared)
++     __THROW __nonnull ((1, 2));
++
++/* Set the process-shared flag of the condition variable attribute ATTR.  */
++extern int pthread_condattr_setpshared (pthread_condattr_t *__attr,
++                                        int __pshared) __THROW __nonnull ((1));
++
++#ifdef __USE_XOPEN2K
++/* Get the clock selected for the conditon variable attribute ATTR.  */
++extern int pthread_condattr_getclock (__const pthread_condattr_t *
++				      __restrict __attr,
++				      __clockid_t *__restrict __clock_id)
++     __THROW __nonnull ((1, 2));
++
++/* Set the clock selected for the conditon variable attribute ATTR.  */
++extern int pthread_condattr_setclock (pthread_condattr_t *__attr,
++				      __clockid_t __clock_id)
++     __THROW __nonnull ((1));
++#endif
++
++
++#ifdef __USE_XOPEN2K
++/* Functions to handle spinlocks.  */
++
++/* Initialize the spinlock LOCK.  If PSHARED is nonzero the spinlock can
++   be shared between different processes.  */
++extern int pthread_spin_init (pthread_spinlock_t *__lock, int __pshared)
++     __THROW __nonnull ((1));
++
++/* Destroy the spinlock LOCK.  */
++extern int pthread_spin_destroy (pthread_spinlock_t *__lock)
++     __THROW __nonnull ((1));
++
++/* Wait until spinlock LOCK is retrieved.  */
++extern int pthread_spin_lock (pthread_spinlock_t *__lock)
++     __THROW __nonnull ((1));
++
++/* Try to lock spinlock LOCK.  */
++extern int pthread_spin_trylock (pthread_spinlock_t *__lock)
++     __THROW __nonnull ((1));
++
++/* Release spinlock LOCK.  */
++extern int pthread_spin_unlock (pthread_spinlock_t *__lock)
++     __THROW __nonnull ((1));
++
++
++/* Functions to handle barriers.  */
++
++/* Initialize BARRIER with the attributes in ATTR.  The barrier is
++   opened when COUNT waiters arrived.  */
++extern int pthread_barrier_init (pthread_barrier_t *__restrict __barrier,
++				 __const pthread_barrierattr_t *__restrict
++				 __attr, unsigned int __count)
++     __THROW __nonnull ((1));
++
++/* Destroy a previously dynamically initialized barrier BARRIER.  */
++extern int pthread_barrier_destroy (pthread_barrier_t *__barrier)
++     __THROW __nonnull ((1));
++
++/* Wait on barrier BARRIER.  */
++extern int pthread_barrier_wait (pthread_barrier_t *__barrier)
++     __THROW __nonnull ((1));
++
++
++/* Initialize barrier attribute ATTR.  */
++extern int pthread_barrierattr_init (pthread_barrierattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Destroy previously dynamically initialized barrier attribute ATTR.  */
++extern int pthread_barrierattr_destroy (pthread_barrierattr_t *__attr)
++     __THROW __nonnull ((1));
++
++/* Get the process-shared flag of the barrier attribute ATTR.  */
++extern int pthread_barrierattr_getpshared (__const pthread_barrierattr_t *
++					   __restrict __attr,
++					   int *__restrict __pshared)
++     __THROW __nonnull ((1, 2));
++
++/* Set the process-shared flag of the barrier attribute ATTR.  */
++extern int pthread_barrierattr_setpshared (pthread_barrierattr_t *__attr,
++                                           int __pshared)
++     __THROW __nonnull ((1));
++#endif
++
++
++/* Functions for handling thread-specific data.  */
++
++/* Create a key value identifying a location in the thread-specific
++   data area.  Each thread maintains a distinct thread-specific data
++   area.  DESTR_FUNCTION, if non-NULL, is called with the value
++   associated to that key when the key is destroyed.
++   DESTR_FUNCTION is not called if the value associated is NULL when
++   the key is destroyed.  */
++extern int pthread_key_create (pthread_key_t *__key,
++			       void (*__destr_function) (void *))
++     __THROW __nonnull ((1));
++
++/* Destroy KEY.  */
++extern int pthread_key_delete (pthread_key_t __key) __THROW;
++
++/* Return current value of the thread-specific data slot identified by KEY.  */
++extern void *pthread_getspecific (pthread_key_t __key) __THROW;
++
++/* Store POINTER in the thread-specific data slot identified by KEY. */
++extern int pthread_setspecific (pthread_key_t __key,
++				__const void *__pointer) __THROW ;
++
++
++#ifdef __USE_XOPEN2K
++/* Get ID of CPU-time clock for thread THREAD_ID.  */
++extern int pthread_getcpuclockid (pthread_t __thread_id,
++				  __clockid_t *__clock_id)
++     __THROW __nonnull ((2));
++#endif
++
++
++/* Install handlers to be called when a new process is created with FORK.
++   The PREPARE handler is called in the parent process just before performing
++   FORK. The PARENT handler is called in the parent process just after FORK.
++   The CHILD handler is called in the child process.  Each of the three
++   handlers can be NULL, meaning that no handler needs to be called at that
++   point.
++   PTHREAD_ATFORK can be called several times, in which case the PREPARE
++   handlers are called in LIFO order (last added with PTHREAD_ATFORK,
++   first called before FORK), and the PARENT and CHILD handlers are called
++   in FIFO (first added, first called).  */
++
++extern int pthread_atfork (void (*__prepare) (void),
++			   void (*__parent) (void),
++			   void (*__child) (void)) __THROW;
++
++
++#ifdef __USE_EXTERN_INLINES
++/* Optimizations.  */
++__extern_inline int
++__NTH (pthread_equal (pthread_t __thread1, pthread_t __thread2))
++{
++  return __thread1 == __thread2;
++}
++#endif
++
++__END_DECLS
++
++#endif	/* pthread.h */
++
++#ifndef _PTHREAD_H_HPPA_ 
++#define _PTHREAD_H_HPPA_ 1
++
++/* The pthread_cond_t initializer is compatible only with NPTL. We do not
++   want to be forwards compatible, we eventually want to drop the code 
++   that has to clear the old LT initializer.  */
++#undef PTHREAD_COND_INITIALIZER
++#define PTHREAD_COND_INITIALIZER { { 0, 0, 0, (void *) 0, 0, 0, 0, 0, 0 } }
++
++/* The pthread_mutex_t and pthread_rwlock_t initializers are compatible
++   only with NPTL. NPTL assumes pthread_rwlock_t is all zero.  */
++#undef PTHREAD_MUTEX_INITIALIZER
++#undef PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
++#undef PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
++#undef PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP
++/* Mutex initializers.  */
++#define PTHREAD_MUTEX_INITIALIZER \
++  { { 0, 0, 0, 0, { 0, 0, 0, 0 }, 0, { 0 }, 0, 0 } }
++#ifdef __USE_GNU
++# define PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, PTHREAD_MUTEX_RECURSIVE_NP, { 0, 0, 0, 0 }, 0, { 0 }, 0, 0 } }
++# define PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, PTHREAD_MUTEX_ERRORCHECK_NP, { 0, 0, 0, 0 }, 0, { 0 }, 0, 0 } }
++# define PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP \
++  { { 0, 0, 0, PTHREAD_MUTEX_ADAPTIVE_NP, { 0, 0, 0, 0 }, 0, { 0 }, 0, 0 } }
++#endif
++
++#undef PTHREAD_RWLOCK_INITIALIZER
++#undef PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP
++/* Read-write lock initializers.  */
++#define PTHREAD_RWLOCK_INITIALIZER \
++  { { { 0, 0, 0, 0 }, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
++#ifdef __USE_GNU
++# define PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP \
++  { { { 0, 0, 0, 0 }, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP,\
++      0, 0, 0 } }
++#endif  /* Unix98 or XOpen2K */
++ 
++#endif
++
+diff -urN a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthreadP.h b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthreadP.h
+--- a/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthreadP.h	1969-12-31 19:00:00.000000000 -0500
++++ b/ports/sysdeps/unix/sysv/linux/hppa/nptl/pthreadP.h	2009-09-03 16:01:13.000000000 -0400
+@@ -0,0 +1,17 @@
++#include_next <pthreadP.h>
++#ifndef _PTHREADP_H_HPPA_ 
++#define _PTHREADP_H_HPPA_ 1
++
++/* Internal cond functions.  */
++extern int __pthread_cond_broadcast_internal (pthread_cond_t *cond);
++extern int __pthread_cond_destroy_internal (pthread_cond_t *cond);
++extern int __pthread_cond_init_internal (pthread_cond_t *cond,
++                                        const pthread_condattr_t *cond_attr);
++extern int __pthread_cond_signal_internal (pthread_cond_t *cond);
++extern int __pthread_cond_timedwait_internal (pthread_cond_t *cond,
++                                             pthread_mutex_t *mutex,
++                                             const struct timespec *abstime);
++extern int __pthread_cond_wait_internal (pthread_cond_t *cond,
++                                        pthread_mutex_t *mutex);
++#endif
++

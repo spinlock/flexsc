@@ -1,0 +1,86 @@
+---
+ ports/sysdeps/unix/sysv/linux/alpha/sys/user.h |    4 ++--
+ ports/sysdeps/unix/sysv/linux/mips/sys/user.h  |    4 ++--
+ sysdeps/unix/sysv/linux/ia64/sys/user.h        |    3 ++-
+ sysdeps/unix/sysv/linux/x86_64/sys/user.h      |    4 ++--
+ 4 files changed, 8 insertions(+), 7 deletions(-)
+
+--- a/ports/sysdeps/unix/sysv/linux/alpha/sys/user.h
++++ b/ports/sysdeps/unix/sysv/linux/alpha/sys/user.h
+@@ -23,7 +23,7 @@
+    only. Don't read too much into it. Don't use it for anything other
+    than gdb/strace unless you know what you are doing. */
+ 
+-#include <asm/page.h>
++#include <unistd.h>
+ #include <asm/reg.h>
+ 
+ struct user
+@@ -41,7 +41,7 @@
+   char u_comm[32];				/* user command name */
+ };
+ 
+-#define NBPG			PAGE_SIZE
++#define NBPG			(sysconf(_SC_PAGESIZE))
+ #define UPAGES			1
+ #define HOST_TEXT_START_ADDR	(u.start_code)
+ #define HOST_DATA_START_ADDR	(u.start_data)
+--- a/sysdeps/unix/sysv/linux/ia64/sys/user.h
++++ b/sysdeps/unix/sysv/linux/ia64/sys/user.h
+@@ -21,6 +21,7 @@
+ 
+ #include <features.h>
+ #include <sys/types.h>
++#include <unistd.h>
+ 
+ /* This definition comes directly from the kernel headers.  If
+    anything changes in them this header has to be changed, too.  */
+@@ -45,7 +46,7 @@
+   char u_comm[32];				/* User command name.  */
+ };
+ 
+-#define NBPG			PAGE_SIZE
++#define NBPG			(sysconf(_SC_PAGESIZE))
+ #define UPAGES			1
+ #define HOST_TEXT_START_ADDR	(u.start_code)
+ #define HOST_DATA_START_ADDR	(u.start_data)
+--- a/ports/sysdeps/unix/sysv/linux/mips/sys/user.h
++++ b/ports/sysdeps/unix/sysv/linux/mips/sys/user.h
+@@ -20,6 +20,7 @@
+ #define _SYS_USER_H	1
+ 
+ #include <sgidefs.h>
++#include <unistd.h>
+ 
+ /* The whole purpose of this file is for GDB and GDB only.  Don't read
+    too much into it.  Don't use it for anything other than GDB unless
+@@ -207,8 +208,7 @@
+ 
+ #endif
+ 
+-#define PAGE_SHIFT		12
+-#define PAGE_SIZE		(1UL << PAGE_SHIFT)
++#define PAGE_SIZE		(sysconf(_SC_PAGESIZE))
+ #define PAGE_MASK		(~(PAGE_SIZE-1))
+ #define NBPG			PAGE_SIZE
+ #define UPAGES			1
+--- a/sysdeps/unix/sysv/linux/x86_64/sys/user.h
++++ b/sysdeps/unix/sysv/linux/x86_64/sys/user.h
+@@ -24,6 +24,7 @@
+    you know what you are doing.  */
+ 
+ #include <bits/wordsize.h>
++#include <unistd.h>
+ 
+ #if __WORDSIZE == 64
+ 
+@@ -164,8 +165,7 @@
+ };
+ #endif  /* __WORDSIZE */
+ 
+-#define PAGE_SHIFT		12
+-#define PAGE_SIZE		(1UL << PAGE_SHIFT)
++#define PAGE_SIZE		(sysconf(_SC_PAGESIZE))
+ #define PAGE_MASK		(~(PAGE_SIZE-1))
+ #define NBPG			PAGE_SIZE
+ #define UPAGES			1

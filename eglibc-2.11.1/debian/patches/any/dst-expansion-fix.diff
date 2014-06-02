@@ -1,0 +1,58 @@
+Description: do not expand DST in setuid binaries (CVE-2010-3847).
+Origin: http://sourceware.org/ml/libc-hacker/2010-10/msg00008.html
+Origin: http://sourceware.org/ml/libc-hacker/2010-12/msg00001.html
+
+Index: eglibc-2.12.1/elf/dl-open.c
+===================================================================
+--- eglibc-2.12.1.orig/elf/dl-open.c	2010-02-04 13:06:08.000000000 -0800
++++ eglibc-2.12.1/elf/dl-open.c	2011-01-10 15:29:28.513170542 -0800
+@@ -221,35 +221,6 @@
+ 
+   assert (_dl_debug_initialize (0, args->nsid)->r_state == RT_CONSISTENT);
+ 
+-  /* Maybe we have to expand a DST.  */
+-  if (__builtin_expect (dst != NULL, 0))
+-    {
+-      size_t len = strlen (file);
+-
+-      /* Determine how much space we need.  We have to allocate the
+-	 memory locally.  */
+-      size_t required = DL_DST_REQUIRED (call_map, file, len,
+-					 _dl_dst_count (dst, 0));
+-
+-      /* Get space for the new file name.  */
+-      char *new_file = (char *) alloca (required + 1);
+-
+-      /* Generate the new file name.  */
+-      _dl_dst_substitute (call_map, file, new_file, 0);
+-
+-      /* If the substitution failed don't try to load.  */
+-      if (*new_file == '\0')
+-	_dl_signal_error (0, "dlopen", NULL,
+-			  N_("empty dynamic string token substitution"));
+-
+-      /* Now we have a new file name.  */
+-      file = new_file;
+-
+-      /* It does not matter whether call_map is set even if we
+-	 computed it only because of the DST.  Since the path contains
+-	 a slash the value is not used.  See dl-load.c.  */
+-    }
+-
+   /* Load the named object.  */
+   struct link_map *new;
+   args->map = new = _dl_map_object (call_map, file, 0, lt_loaded, 0,
+Index: eglibc-2.12.1/elf/dl-object.c
+===================================================================
+--- eglibc-2.12.1.orig/elf/dl-object.c	2011-01-10 15:29:52.163761145 -0800
++++ eglibc-2.12.1/elf/dl-object.c	2011-01-10 15:30:53.485292449 -0800
+@@ -214,6 +214,9 @@
+     out:
+       new->l_origin = origin;
+     }
++  else if (INTUSE(__libc_enable_secure) && type == lt_executable)
++    /* The origin of a privileged program cannot be trusted.  */
++    new->l_origin = (char *) -1;
+ 
+   return new;
+ }

@@ -1,0 +1,19 @@
+debian/local/etc/* /etc
+posix/gai.conf /etc
+debian/tmp-libc/sbin/ldconfig sbin
+debian/tmp-libc/usr/bin/catchsegv usr/bin
+debian/tmp-libc/usr/bin/getconf usr/bin
+debian/tmp-libc/usr/bin/getent usr/bin
+debian/tmp-libc/usr/bin/iconv usr/bin
+debian/tmp-libc/usr/bin/ldd usr/bin
+debian/tmp-libc/usr/bin/localedef usr/bin
+debian/tmp-libc/usr/bin/locale usr/bin
+debian/tmp-libc/usr/bin/tzselect usr/bin
+debian/tmp-libc/usr/lib/pt_chown usr/lib
+debian/tmp-libc/usr/sbin/iconvconfig usr/sbin
+debian/tmp-libc/usr/sbin/rpcinfo usr/bin
+debian/tmp-libc/usr/sbin/zdump usr/bin
+debian/tmp-libc/usr/sbin/zic usr/sbin
+
+debian/local/usr_sbin/update-locale usr/sbin
+debian/local/usr_sbin/validlocale usr/sbin

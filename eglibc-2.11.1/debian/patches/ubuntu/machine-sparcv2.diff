@@ -1,0 +1,38 @@
+Recognize sparcv9v2 and sparc64v2 as valid machine names. The configure.in
+still supports these machines, and the Debian build system misuses this as
+the name of the build directory.
+
+--- ./scripts/config.sub~	2009-05-13 02:14:37.000000000 +0200
++++ ./scripts/config.sub	2009-05-13 09:43:56.000000000 +0200
+@@ -284,8 +284,8 @@
+ 	| score \
+ 	| sh | sh[1234] | sh[24]a | sh[24]aeb | sh[23]e | sh[34]eb | sheb | shbe | shle | sh[1234]le | sh3ele \
+ 	| sh64 | sh64le \
+-	| sparc | sparc64 | sparc64b | sparc64v | sparc86x | sparclet | sparclite \
+-	| sparcv8 | sparcv9 | sparcv9b | sparcv9v \
++	| sparc | sparc64 | sparc64b | sparc64v | sparc64v2 | sparc86x | sparclet | sparclite \
++	| sparcv8 | sparcv9 | sparcv9b | sparcv9v | sparcv9v2 \
+ 	| spu | strongarm \
+ 	| tahoe | thumb | tic4x | tic80 | tron \
+ 	| v850 | v850e \
+@@ -368,9 +368,9 @@
+ 	| romp-* | rs6000-* \
+ 	| sh-* | sh[1234]-* | sh[24]a-* | sh[24]aeb-* | sh[23]e-* | sh[34]eb-* | sheb-* | shbe-* \
+ 	| shle-* | sh[1234]le-* | sh3ele-* | sh64-* | sh64le-* \
+-	| sparc-* | sparc64-* | sparc64b-* | sparc64v-* | sparc86x-* | sparclet-* \
++	| sparc-* | sparc64-* | sparc64b-* | sparc64v-* | sparc64v2-* | sparc86x-* | sparclet-* \
+ 	| sparclite-* \
+-	| sparcv8-* | sparcv9-* | sparcv9b-* | sparcv9v-* | strongarm-* | sv1-* | sx?-* \
++	| sparcv8-* | sparcv9-* | sparcv9b-* | sparcv9v-* | sparcv9v2-* | strongarm-* | sv1-* | sx?-* \
+ 	| tahoe-* | thumb-* \
+ 	| tic30-* | tic4x-* | tic54x-* | tic55x-* | tic6x-* | tic80-* | tile-* \
+ 	| tron-* \
+@@ -1193,7 +1193,7 @@
+ 	sh[1234] | sh[24]a | sh[24]aeb | sh[34]eb | sh[1234]le | sh[23]ele)
+ 		basic_machine=sh-unknown
+ 		;;
+-	sparc | sparcv8 | sparcv9 | sparcv9b | sparcv9v)
++	sparc | sparcv8 | sparcv9 | sparcv9b | sparcv9v | sparcv9v2)
+ 		basic_machine=sparc-sun
+ 		;;
+ 	cydra)

@@ -1,0 +1,124 @@
+2010-01-10  Samuel Thibault  <samuel.thibault@ens-lyon.org>
+
+        * posix/tst-sysconf.c (posix_options): Only use
+        _POSIX_PRIORITIZED_IO, _POSIX_PRIORITY_SCHEDULING, and
+        _POSIX_SYNCHRONIZED_IO when they are defined
+	* sysdeps/mach/hurd/bits/posix_opt.h:
+	(_POSIX_PRIORITY_SCHEDULING): Undefine macro.
+	(_XOPEN_REALTIME): Undefine macro.
+	(_XOPEN_REALTIME_THREADS): Undefine macro.
+	(_XOPEN_SHM): Undefine macro.
+	[__USE_XOPEN2K8] (_POSIX_THREAD_ROBUST_PRIO_INHERIT): Define
+	macro to -1.
+	[__USE_XOPEN2K8] (_POSIX_THREAD_ROBUST_PRIO_PROTECT): Define
+	macro to -1.
+	(_POSIX_ASYNC_IO): Undefine macro.
+	(_POSIX_PRIORITIZED_IO): Undefine macro.
+	(_POSIX_SPIN_LOCKS): Define macro to -1.
+
+---
+ posix/tst-sysconf.c                |    6 ++++++
+ sysdeps/mach/hurd/bits/posix_opt.h |   28 +++++++++++++++++++++++-----
+ 2 files changed, 29 insertions(+), 5 deletions(-)
+
+diff --git a/posix/tst-sysconf.c b/posix/tst-sysconf.c
+index e297229..105c7c2 100644
+--- a/posix/tst-sysconf.c
++++ b/posix/tst-sysconf.c
+@@ -29,8 +29,12 @@ static struct
+     N (MEMORY_PROTECTION),
+     N (MESSAGE_PASSING),
+     N (MONOTONIC_CLOCK),
++#ifdef _POSIX_PRIORITIZED_IO
+     N (PRIORITIZED_IO),
++#endif
++#ifdef _POSIX_PRIORITY_SCHEDULING
+     N (PRIORITY_SCHEDULING),
++#endif
+     N (RAW_SOCKETS),
+     N (READER_WRITER_LOCKS),
+     N (REALTIME_SIGNALS),
+@@ -42,7 +46,9 @@ static struct
+     N (SPAWN),
+     N (SPIN_LOCKS),
+     N (SPORADIC_SERVER),
++#ifdef _POSIX_SYNCHRONIZED_IO
+     N (SYNCHRONIZED_IO),
++#endif
+     N (THREAD_ATTR_STACKADDR),
+     N (THREAD_ATTR_STACKSIZE),
+     N (THREAD_CPUTIME),
+diff --git a/sysdeps/mach/hurd/bits/posix_opt.h b/sysdeps/mach/hurd/bits/posix_opt.h
+index 775c921..4c1b06b 100644
+--- a/sysdeps/mach/hurd/bits/posix_opt.h
++++ b/sysdeps/mach/hurd/bits/posix_opt.h
+@@ -31,6 +31,9 @@
+ /* Processes have a saved set-user-ID and a saved set-group-ID.  */
+ #define	_POSIX_SAVED_IDS	1
+ 
++/* Priority scheduling is not supported.  */
++#undef	_POSIX_PRIORITY_SCHEDULING
++
+ /* Synchronizing file data is supported, but msync is missing.  */
+ #undef _POSIX_SYNCHRONIZED_IO
+ 
+@@ -60,6 +63,14 @@
+ #undef _POSIX_NO_TRUNC		/* Overlong file names get error?  */
+ #undef _POSIX_SYNC_IO		/* File supports O_SYNC et al?  */
+ 
++/* X/Open realtime support is not supported.  */
++#undef _XOPEN_REALTIME
++
++/* X/Open thread realtime support is not supported.  */
++#undef _XOPEN_REALTIME_THREADS
++
++/* XPG4.2 shared memory is not supported.  */
++#undef	_XOPEN_SHM
+ 
+ /* We do not have the POSIX threads interface.  */
+ #define _POSIX_THREADS	-1
+@@ -72,6 +83,12 @@
+ #define _POSIX_THREAD_PRIORITY_SCHEDULING	-1
+ #define _POSIX_THREAD_ATTR_STACKSIZE		-1
+ #define _POSIX_THREAD_ATTR_STACKADDR		-1
++#define _POSIX_THREAD_PRIO_INHERIT	-1
++#define _POSIX_THREAD_PRIO_PROTECT	-1
++#ifdef __USE_XOPEN2K8
++# define _POSIX_THREAD_ROBUST_PRIO_INHERIT	-1
++# define _POSIX_THREAD_ROBUST_PRIO_PROTECT	-1
++#endif
+ #define _POSIX_SEMAPHORES			-1
+ 
+ /* Real-time signals are not yet supported.  */
+@@ -79,8 +96,11 @@
+ 
+ /* Asynchronous I/O might supported with the existing ABI.  */
+ #define _POSIX_ASYNCHRONOUS_IO	0
++#undef _POSIX_ASYNC_IO
+ /* Alternative name for Unix98.  */
+ #define _LFS_ASYNCHRONOUS_IO	_POSIX_ASYNCHRONOUS_IO
++/* Support for prioritization is not available.  */
++#undef _POSIX_PRIORITIZED_IO
+ 
+ /* The LFS support in asynchronous I/O is also available.  */
+ #define _LFS64_ASYNCHRONOUS_IO	_POSIX_ASYNCHRONOUS_IO
+@@ -111,6 +131,9 @@
+ /* We cannot support the Timeouts option without _POSIX_THREADS.  */
+ #define _POSIX_TIMEOUTS	-1
+ 
++/* We do not support spinlocks.  */
++#define _POSIX_SPIN_LOCKS	-1
++
+ /* The `spawn' function family is supported.  */
+ #define _POSIX_SPAWN	200809L
+ 
+@@ -157,9 +180,4 @@
+ /* Typed memory objects are not available.  */
+ #define _POSIX_TYPED_MEMORY_OBJECTS	-1
+ 
+-/* No support for priority inheritance or protection so far.  */
+-#define _POSIX_THREAD_PRIO_INHERIT	-1
+-#define _POSIX_THREAD_PRIO_PROTECT	-1
+-
+-
+ #endif /* bits/posix_opt.h */

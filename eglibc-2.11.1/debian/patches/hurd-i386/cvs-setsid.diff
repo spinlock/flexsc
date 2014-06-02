@@ -1,0 +1,17 @@
+Fix bogus port deallocation due to uninitialized variable
+
+---
+ hurdioctl.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- eglibc-2.10.2-orig/hurd/hurdioctl.c	2006-08-17 02:18:26.000000000 +0100
++++ eglibc-2.10.2/hurd/hurdioctl.c	2009-12-22 03:13:05.000000000 +0000
+@@ -169,7 +169,7 @@
+   for (i = 0; i < _hurd_dtablesize; ++i)
+     {
+       struct hurd_fd *const d = _hurd_dtable[i];
+-      mach_port_t newctty;
++      mach_port_t newctty = MACH_PORT_NULL;
+ 
+       if (d == NULL)
+ 	/* Nothing to do for an unused descriptor cell.  */

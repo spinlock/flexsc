@@ -1,0 +1,29 @@
+Add more ipv6 macros.
+
+---
+ bits/in.h |    7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+--- a/bits/in.h
++++ b/bits/in.h
+@@ -50,7 +50,7 @@
+ 
+ /* IPV6 socket options.  */
+ #define IPV6_ADDRFORM		1
+-#define IPV6_RXINFO		2
++#define IPV6_PKTINFO		2
+ #define IPV6_HOPOPTS		3
+ #define IPV6_DSTOPTS		4
+ #define IPV6_RTHDR		5
+@@ -58,8 +58,9 @@
+ #define IPV6_CHECKSUM		7
+ #define IPV6_HOPLIMIT		8
+ 
+-#define IPV6_TXINFO		IPV6_RXINFO
+-#define SCM_SRCINFO		IPV6_TXINFO
++#define IPV6_RXINFO		IPV6_PKTINFO
++#define IPV6_TXINFO		IPV6_PKTINFO
++#define SCM_SRCINFO		IPV6_PKTINFO
+ #define SCM_SRCRT		IPV6_RXSRCRT
+ 
+ #define IPV6_UNICAST_HOPS	16

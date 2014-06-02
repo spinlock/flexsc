@@ -1,0 +1,61 @@
+Poor-man's global scope switch support: just busy-waits.
+---
+ elf/dl-support.c                  |    1 +
+ sysdeps/generic/ldsodefs.h        |    1 +
+ sysdeps/mach/hurd/sysdep-cancel.h |    9 +++++++++
+ sysdeps/mach/hurd/tls.h           |   13 +++++++++++++
+ 4 files changed, 24 insertions(+)
+
+--- a/elf/dl-support.c
++++ b/elf/dl-support.c
+@@ -141,6 +141,7 @@
+ /* Function in libpthread to wait for termination of lookups.  */
+ void (*_dl_wait_lookup_done) (void);
+ 
++int volatile _dl_thread_gscope_count;
+ struct dl_scope_free_list *_dl_scope_free_list;
+ 
+ #ifdef NEED_DL_SYSINFO
+--- a/sysdeps/generic/ldsodefs.h
++++ b/sysdeps/generic/ldsodefs.h
+@@ -493,6 +493,7 @@
+     size_t count;
+     void *list[50];
+   } *_dl_scope_free_list;
++  EXTERN volatile int _dl_thread_gscope_count;
+ #ifdef SHARED
+ };
+ # define __rtld_global_attribute__
+--- a/sysdeps/mach/hurd/tls.h
++++ b/sysdeps/mach/hurd/tls.h
+@@ -74,5 +74,18 @@
+ 
+ #endif /* HAVE_TLS_SUPPORT */
+ 
++#ifndef __ASSEMBLER__
++#include <mach/mach_traps.h>
++#include <atomic.h>
++/* Temporary poor-man's global scope switch support: just busy-waits */
++#define THREAD_GSCOPE_SET_FLAG() \
++	asm volatile ("lock incl %0":"=m"(GL(dl_thread_gscope_count)))
++#define THREAD_GSCOPE_RESET_FLAG() \
++	asm volatile ("lock decl %0":"=m"(GL(dl_thread_gscope_count)))
++#define THREAD_GSCOPE_WAIT() \
++  while (GL(dl_thread_gscope_count)) { \
++    __swtch_pri (0); \
++  }
++#endif
+ 
+ #endif /* tls.h */
+--- /dev/null
++++ b/sysdeps/mach/hurd/sysdep-cancel.h
+@@ -0,0 +1,9 @@
++#include <sysdep.h>
++
++/* Always multi-thread (since there's at least the sig handler), but no
++   handling enabled.  */
++#define SINGLE_THREAD_P (0)
++#define RTLD_SINGLE_THREAD_P (0)
++#define LIBC_CANCEL_ASYNC()	0 /* Just a dummy value.  */
++#define LIBC_CANCEL_RESET(val)	((void)(val)) /* Nothing, but evaluate it.  */
++#define LIBC_CANCEL_HANDLED()	/* Nothing.  */

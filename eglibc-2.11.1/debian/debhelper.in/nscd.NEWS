@@ -1,0 +1,11 @@
+glibc (2.5-5) unstable; urgency=low
+
+  Since this release, hosts caching in nscd is off by default: for some of the
+  libc calls (gethostby* calls) nscd does not respect the DNS TTLs.  It can
+  lead to system lockups (e.g. if you are using pam-ldap and change the IP of
+  your authentication server) hence is not considered safe.
+
+  See debian bug #335476 and how upstream answered to that in
+  http://sourceware.org/bugzilla/show_bug.cgi?id=4428.
+
+ -- Pierre Habouzit <madcoder@debian.org>  Sat, 28 Apr 2007 11:10:56 +0200

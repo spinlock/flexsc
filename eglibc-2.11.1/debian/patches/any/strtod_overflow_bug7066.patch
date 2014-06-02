@@ -1,0 +1,38 @@
+Origin: http://sourceware.org/git/?p=glibc.git;a=commit;f=stdlib/strtod_l.c;h=a726d7960e8a4ac784131f591114a0ef14246d8b
+From a726d7960e8a4ac784131f591114a0ef14246d8b Mon Sep 17 00:00:00 2001
+From: Andreas Schwab <schwab@redhat.com>
+Date: Wed, 1 Sep 2010 12:38:44 -0700
+Subject: [PATCH] Fix array overflow in floating point parser
+Bug: http://sourceware.org/bugzilla/show_bug.cgi?id=7066
+
+2010-08-31  Andreas Schwab  <schwab@redhat.com>
+
+	[BZ #7066]
+	* stdlib/strtod_l.c (____STRTOF_INTERNAL): Fix array overflow when
+	shifting retval into place.
+
+
+---
+ ChangeLog         |    6 ++++++
+ NEWS              |    2 +-
+ stdlib/strtod_l.c |    4 +++-
+ 3 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/stdlib/strtod_l.c b/stdlib/strtod_l.c
+index cde1280..537d1fb 100644
+--- a/stdlib/strtod_l.c
++++ b/stdlib/strtod_l.c
+@@ -1491,7 +1491,9 @@ ____STRTOF_INTERNAL (nptr, endptr, group, loc)
+ 			  register int i;
+ 			  (void) __mpn_lshift (&retval[used
+ 						       / BITS_PER_MP_LIMB],
+-					       retval, RETURN_LIMB_SIZE,
++					       retval,
++					       (RETURN_LIMB_SIZE
++						- used / BITS_PER_MP_LIMB),
+ 					       used % BITS_PER_MP_LIMB);
+ 			  for (i = used / BITS_PER_MP_LIMB - 1; i >= 0; --i)
+ 			    retval[i] = 0;
+-- 
+1.7.3.4
+

@@ -1,0 +1,42 @@
+2010-01-26  Samuel Thibault  <samuel.thibault@ens-lyon.org>
+
+	* sysdeps/mach/getsysstats.c (get_nprocs_conf, get_nprocs,
+	get_phys_pages, get_avphys_pages): Add weak aliases.
+
+---
+ getsysstats.c |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/sysdeps/mach/getsysstats.c b/sysdeps/mach/getsysstats.c
+index d2bebb6..a7e0804 100644
+--- a/sysdeps/mach/getsysstats.c
++++ b/sysdeps/mach/getsysstats.c
+@@ -40,6 +40,7 @@ __get_nprocs_conf ()
+ 
+   return hbi.max_cpus;
+ }
++weak_alias (__get_nprocs_conf, get_nprocs_conf)
+ 
+ /* Return the number of processors currently available on the system. */
+ int
+@@ -58,6 +59,7 @@ __get_nprocs ()
+ 
+   return hbi.avail_cpus;
+ }
++weak_alias (__get_nprocs, get_nprocs)
+ 
+ /* Return the number of physical pages on the system. */
+ long int
+@@ -76,6 +78,7 @@ __get_phys_pages ()
+ 
+   return hbi.memory_size / __vm_page_size;
+ }
++weak_alias (__get_phys_pages, get_phys_pages)
+ 
+ /* Return the number of available physical pages */
+ long int
+@@ -100,3 +103,4 @@ __get_avphys_pages ()
+ 
+   return vs.free_count;
+ }
++weak_alias (__get_avphys_pages, get_avphys_pages)

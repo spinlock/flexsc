@@ -1,0 +1,46 @@
+Description: fix casting of headers to avoid integer underflows (CVE-2010-0830).
+Bug-Ubuntu: https://launchpad.net/bugs/542197
+Origin: http://sourceware.org/git/?p=glibc.git;a=commitdiff;h=db07e962b6ea963dbb345439f6ab9b0cf74d87c5
+
+Index: eglibc-2.11.1/elf/dynamic-link.h
+===================================================================
+--- eglibc-2.11.1.orig/elf/dynamic-link.h	2010-05-19 15:18:45.251633258 -0700
++++ eglibc-2.11.1/elf/dynamic-link.h	2010-05-19 15:19:34.772884204 -0700
+@@ -103,6 +103,11 @@
+ {
+   ElfW(Dyn) *dyn = l->l_ld;
+   ElfW(Dyn) **info;
++#if __ELF_NATIVE_CLASS == 32
++  typedef Elf32_Word d_tag_utype;
++#elif __ELF_NATIVE_CLASS == 64
++  typedef Elf64_Xword d_tag_utype;
++#endif
+ 
+ #ifndef RTLD_BOOTSTRAP
+   if (dyn == NULL)
+@@ -113,20 +118,20 @@
+ 
+   while (dyn->d_tag != DT_NULL)
+     {
+-      if (dyn->d_tag < DT_NUM)
++      if ((d_tag_utype) dyn->d_tag < DT_NUM)
+ 	info[dyn->d_tag] = dyn;
+       else if (dyn->d_tag >= DT_LOPROC &&
+ 	       dyn->d_tag < DT_LOPROC + DT_THISPROCNUM)
+ 	info[dyn->d_tag - DT_LOPROC + DT_NUM] = dyn;
+-      else if ((Elf32_Word) DT_VERSIONTAGIDX (dyn->d_tag) < DT_VERSIONTAGNUM)
++      else if ((d_tag_utype) DT_VERSIONTAGIDX (dyn->d_tag) < DT_VERSIONTAGNUM)
+ 	info[VERSYMIDX (dyn->d_tag)] = dyn;
+-      else if ((Elf32_Word) DT_EXTRATAGIDX (dyn->d_tag) < DT_EXTRANUM)
++      else if ((d_tag_utype) DT_EXTRATAGIDX (dyn->d_tag) < DT_EXTRANUM)
+ 	info[DT_EXTRATAGIDX (dyn->d_tag) + DT_NUM + DT_THISPROCNUM
+ 	     + DT_VERSIONTAGNUM] = dyn;
+-      else if ((Elf32_Word) DT_VALTAGIDX (dyn->d_tag) < DT_VALNUM)
++      else if ((d_tag_utype) DT_VALTAGIDX (dyn->d_tag) < DT_VALNUM)
+ 	info[DT_VALTAGIDX (dyn->d_tag) + DT_NUM + DT_THISPROCNUM
+ 	     + DT_VERSIONTAGNUM + DT_EXTRANUM] = dyn;
+-      else if ((Elf32_Word) DT_ADDRTAGIDX (dyn->d_tag) < DT_ADDRNUM)
++      else if ((d_tag_utype) DT_ADDRTAGIDX (dyn->d_tag) < DT_ADDRNUM)
+ 	info[DT_ADDRTAGIDX (dyn->d_tag) + DT_NUM + DT_THISPROCNUM
+ 	     + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM] = dyn;
+       ++dyn;

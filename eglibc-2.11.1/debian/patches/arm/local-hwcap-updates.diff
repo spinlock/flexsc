@@ -1,0 +1,47 @@
+Add support for some recent ARM hwcaps additions.
+---
+ ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.c |    4 ++--
+ ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.h |    2 +-
+ ports/sysdeps/unix/sysv/linux/arm/sysdep.h      |    3 +++
+ 3 files changed, 6 insertions(+), 3 deletions(-)
+
+--- a/ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.c
++++ b/ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.c
+@@ -47,12 +47,12 @@
+ #if !defined PROCINFO_DECL && defined SHARED
+   ._dl_arm_cap_flags
+ #else
+-PROCINFO_CLASS const char _dl_arm_cap_flags[10][10]
++PROCINFO_CLASS const char _dl_arm_cap_flags[13][10]
+ #endif
+ #ifndef PROCINFO_DECL
+ = {
+     "swp", "half", "thumb", "26bit", "fast-mult", "fpa", "vfp", "edsp",
+-    "java", "iwmmxt",
++    "java", "iwmmxt", "crunch", "thumbee", "neon",
+   }
+ #endif
+ #if !defined SHARED || defined PROCINFO_DECL
+--- a/ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
++++ b/ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
+@@ -24,7 +24,7 @@
+ #include <ldsodefs.h>
+ #include <sysdep.h>
+ 
+-#define _DL_HWCAP_COUNT 10
++#define _DL_HWCAP_COUNT 13
+ 
+ /* The kernel provides platform data but it is not interesting.  */
+ #define _DL_HWCAP_PLATFORM 	0
+--- a/ports/sysdeps/unix/sysv/linux/arm/sysdep.h
++++ b/ports/sysdeps/unix/sysv/linux/arm/sysdep.h
+@@ -48,6 +48,9 @@
+ #define HWCAP_ARM_EDSP		128
+ #define HWCAP_ARM_JAVA		256
+ #define HWCAP_ARM_IWMMXT	512
++#define HWCAP_ARM_CRUNCH	1024
++#define HWCAP_ARM_THUMBEE	2048
++#define HWCAP_ARM_NEON		4096
+ 
+ #ifdef __ASSEMBLER__
+ 

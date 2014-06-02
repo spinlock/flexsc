@@ -1,0 +1,42 @@
+Mutex locking fix.
+
+---
+ sysdeps/mach/hurd/dup2.c |    7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+--- a/sysdeps/mach/hurd/dup2.c
++++ b/sysdeps/mach/hurd/dup2.c
+@@ -68,15 +68,14 @@
+ 	  /* Get a hold of the destination descriptor.  */
+ 	  struct hurd_fd *d2;
+ 
++	  __mutex_lock (&_hurd_dtable_lock);
++
+ 	  if (fd2 >= _hurd_dtablesize)
+ 	    {
+ 	      /* The table is not large enough to hold the destination
+ 		 descriptor.  Enlarge it as necessary to allocate this
+ 		 descriptor.  */
+ 	      __mutex_unlock (&_hurd_dtable_lock);
+-	      /* We still hold FD1's lock, but this is safe because
+-		 _hurd_alloc_fd will only examine the cells starting
+-		 at FD2.  */
+ 	      d2 = _hurd_alloc_fd (NULL, fd2);
+ 	      if (d2)
+ 		__spin_unlock (&d2->port.lock);
+@@ -96,6 +95,7 @@
+ 							 MACH_PORT_NULL);
+ 		}
+ 	    }
++	  __mutex_unlock (&_hurd_dtable_lock);
+ 
+ 	  if (d2 == NULL)
+ 	    {
+@@ -119,7 +119,6 @@
+ 	      _hurd_port_locked_set (&d2->port, port); /* Unlocks D2.  */
+ 	    }
+ 	}
+-      __mutex_unlock (&_hurd_dtable_lock);
+ 
+       _hurd_port_free (&d->port, &ulink, port);
+       if (ctty != MACH_PORT_NULL)

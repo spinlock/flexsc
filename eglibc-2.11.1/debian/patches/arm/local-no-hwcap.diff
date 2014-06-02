@@ -1,0 +1,17 @@
+# DP: Restricted hardware caps for ARM
+
+---
+ ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.h |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
++++ b/ports/sysdeps/unix/sysv/linux/arm/dl-procinfo.h
+@@ -54,7 +54,7 @@
+   return GLRO(dl_arm_cap_flags)[idx];
+ };
+ 
+-#define HWCAP_IMPORTANT		(HWCAP_ARM_HALF | HWCAP_ARM_FAST_MULT)
++#define HWCAP_IMPORTANT		(HWCAP_ARM_VFP | HWCAP_ARM_NEON)
+ 
+ static inline int
+ __attribute__ ((unused))

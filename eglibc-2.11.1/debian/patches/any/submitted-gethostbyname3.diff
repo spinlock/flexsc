@@ -1,0 +1,18 @@
+2009-11-24  Aurelien Jarno  <aurelien@aurel32.net>
+
+	* resolv/nss_dns/dns-host.c (_nss_dns_gethostbyname3_r): Return an
+	error for ETIMEDOUT.
+
+diff --git a/resolv/nss_dns/dns-host.c b/resolv/nss_dns/dns-host.c
+index 818a40a..1eba413 100644
+--- a/resolv/nss_dns/dns-host.c
++++ b/resolv/nss_dns/dns-host.c
+@@ -204,7 +204,7 @@ _nss_dns_gethostbyname3_r (const char *name, int af, struct hostent *result,
+ 	  h_errno = TRY_AGAIN;
+ 	}
+       else
+-	status = (errno == ECONNREFUSED
++	status = ((errno == ECONNREFUSED || errno == ETIMEDOUT)
+ 		  ? NSS_STATUS_UNAVAIL : NSS_STATUS_NOTFOUND);
+       *h_errnop = h_errno;
+       if (h_errno == TRY_AGAIN)

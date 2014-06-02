@@ -1,0 +1,156 @@
+Package: libc6-sparcv9b
+Architecture: sparc sparc64
+Section: libs
+Priority: extra
+Pre-Depends: libc6 (= ${binary:Version})
+Depends: ${misc:Depends}
+Description: GNU C Library: Shared libraries [v9b optimized]
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for the UltraSPARC v9b ABI. It only
+ needs to be installed on UltraSPARC machines. If you install this on a
+ non-UltraSPARC, it won't even be used.
+
+Package: libc6-sparcv9v
+Architecture: sparc
+Section: libs
+Priority: extra
+Pre-Depends: libc6 (= ${Source-Version})
+Description: GNU C Library: Shared libraries [v9v optimized]
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for SUN4V Niagara and derivative
+ processors. It only needs to be installed on machines using
+ SUN4V Niagara and derivatives. If you install this on a machine without
+ such chips, it won't even be used.
+
+Package: libc6-sparcv9v2
+Architecture: sparc
+Section: libs
+Priority: extra
+Pre-Depends: libc6 (= ${Source-Version})
+Description: GNU C Library: Shared libraries [v9v2 optimized]
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for SUN4V Niagara 2 and derivative
+ processors. It only needs to be installed on machines using
+ SUN4V Niagara 2 and derivatives. If you install this on a machine without
+ such chips, it won't even be used.
+
+Package: libc6-sparc64b
+Architecture: sparc
+Section: base
+Priority: extra
+Depends: libc6 (= ${Source-Version}), lib64gcc1
+Conflicts: gcc-3.0 (<< 1:3.0.4ds3-11), libgcc1 (<< 1:3.0.4ds3-11), fakeroot (<< 0.4.5-2.7)
+Description: GNU C Library: 64bit Shared libraries for UltraSPARC [v9b optimized]
+ This package includes shared versions of the standard C library and the
+ standard math library, as well as many others. This is the 64bit version
+ of the library, meant for UltraSPARC systems.
+ .
+ This set of libraries is optimized for UltraSPARC-III and derivative
+ processors. It only needs to be installed on machines using
+ UltraSPARC-III and derivatives. If you install this on a machine without
+ such chips, it won't even be used.
+
+Package: libc6-sparc64v
+Architecture: sparc
+Section: base
+Priority: extra
+Depends: libc6 (= ${Source-Version}), lib64gcc1
+Conflicts: gcc-3.0 (<< 1:3.0.4ds3-11), libgcc1 (<< 1:3.0.4ds3-11), fakeroot (<< 0.4.5-2.7)
+Description: GNU C Library: 64bit Shared libraries for UltraSPARC [v9v optimized]
+ This package includes shared versions of the standard C library and the
+ standard math library, as well as many others. This is the 64bit version
+ of the library, meant for UltraSPARC systems.
+ .
+ This set of libraries is optimized for SUN4V Niagara and derivative
+ processors. It only needs to be installed on machines using
+ SUN4V Niagara and derivatives. If you install this on a machine without
+ such chips, it won't even be used.
+
+Package: libc6-sparc64v2
+Architecture: sparc
+Section: base
+Priority: extra
+Depends: libc6 (= ${Source-Version}), lib64gcc1
+Conflicts: gcc-3.0 (<< 1:3.0.4ds3-11), libgcc1 (<< 1:3.0.4ds3-11), fakeroot (<< 0.4.5-2.7)
+Description: GNU C Library: 64bit Shared libraries for UltraSPARC [v9v2 optimized]
+ This package includes shared versions of the standard C library and the
+ standard math library, as well as many others. This is the 64bit version
+ of the library, meant for UltraSPARC systems.
+ .
+ This set of libraries is optimized for SUN4V Niagara 2 and derivative
+ processors. It only needs to be installed on machines using
+ SUN4V Niagara 2 and derivatives. If you install this on a machine without
+ such chips, it won't even be used.
+
+Package: libc6-i686
+Architecture: i386
+Section: libs
+Priority: extra
+Pre-Depends: libc6 (= ${binary:Version})
+Depends: ${misc:Depends}
+Description: GNU C Library: Shared libraries [i686 optimized]
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for i686 machines, and will only be
+ used if you are running a 2.6 kernel on an i686 class CPU (check the 
+ output of `uname -m').  This includes Pentium Pro, Pentium II/III/IV, 
+ Celeron CPU's and similar class CPU's (including clones such as AMD 
+ Athlon/Opteron, VIA C3 Nehemiah, but not VIA C3 Ezra).  
+
+Package: libc6-xen
+Architecture: i386
+Section: libs
+Priority: extra
+Pre-Depends: libc6 (= ${binary:Version})
+Depends: ${misc:Depends}
+Description: GNU C Library: Shared libraries [Xen version]
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for the Xen hypervisor, and will be
+ selected instead when running under Xen.
+
+Package: libc0.1-i686
+Architecture: kfreebsd-i386
+Section: libs
+Priority: extra
+Pre-Depends: libc0.1 (= ${binary:Version})
+Depends: ${misc:Depends}
+Description: GNU C Library: Shared libraries [i686 optimized]
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for i686 machines, and will only be
+ used on an i686 class CPU (check the output of `uname -m').  This includes 
+ Pentium Pro, Pentium II/III/IV, Celeron CPU's and similar class CPU's
+ (including clones such as AMD Athlon/Opteron, VIA C3 Nehemiah, but not VIA 
+ C3 Ezla).  
+
+Package: libc6.1-alphaev67
+Architecture: alpha
+Section: libs
+Priority: extra
+Pre-Depends: libc6.1 (= ${binary:Version})
+Depends: ${misc:Depends}
+Description: GNU C Library: Shared libraries (EV67 optimized)
+ Contains the standard libraries that are used by nearly all programs on
+ the system. This package includes shared versions of the standard C
+ library and the standard math library, as well as many others.
+ .
+ This set of libraries is optimized for the Alpha EV67. It only
+ needs to be installed on Alpha EV67/68 and EV7 machines. If you install
+ this on an older machine, it won't even be used.
+

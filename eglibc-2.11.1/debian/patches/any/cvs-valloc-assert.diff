@@ -1,0 +1,38 @@
+2010-02-24  Michael Matz <matz@suse.de>
+
+	[BZ#5553]
+	* malloc/malloc.c (public_vALLOc, public_pVALLOc): Fix invalid
+	assertion in case of main_arena being used.
+
+Index: glibc-2.11.1/malloc/malloc.c
+===================================================================
+--- glibc-2.11.1.orig/malloc/malloc.c	2010-01-18 18:01:41.000000000 +0100
++++ glibc-2.11.1/malloc/malloc.c	2010-02-23 13:47:59.000000000 +0100
+@@ -3933,9 +3933,10 @@ public_vALLOc(size_t bytes)
+   if(!p) {
+     /* Maybe the failure is due to running out of mmapped areas. */
+     if(ar_ptr != &main_arena) {
+-      (void)mutex_lock(&main_arena.mutex);
+-      p = _int_memalign(&main_arena, pagesz, bytes);
+-      (void)mutex_unlock(&main_arena.mutex);
++      ar_ptr = &main_arena;
++      (void)mutex_lock(&ar_ptr->mutex);
++      p = _int_memalign(ar_ptr, pagesz, bytes);
++      (void)mutex_unlock(&ar_ptr->mutex);
+     } else {
+ #if USE_ARENAS
+       /* ... or sbrk() has failed and there is still a chance to mmap() */
+@@ -3978,9 +3979,10 @@ public_pVALLOc(size_t bytes)
+   if(!p) {
+     /* Maybe the failure is due to running out of mmapped areas. */
+     if(ar_ptr != &main_arena) {
+-      (void)mutex_lock(&main_arena.mutex);
+-      p = _int_memalign(&main_arena, pagesz, rounded_bytes);
+-      (void)mutex_unlock(&main_arena.mutex);
++      ar_ptr = &main_arena;
++      (void)mutex_lock(&ar_ptr->mutex);
++      p = _int_memalign(ar_ptr, pagesz, rounded_bytes);
++      (void)mutex_unlock(&ar_ptr->mutex);
+     } else {
+ #if USE_ARENAS
+       /* ... or sbrk() has failed and there is still a chance to mmap() */

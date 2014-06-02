@@ -1,0 +1,46 @@
+2009-09-13  Samuel Thibault  <samuel.thibault@ens-lyon.org>
+
+        * hurd/hurdchdir.c (_hurd_change_directory_port_from_name):
+        Return ENOENT when name is empty.
+        * sysdeps/mach/hurd/chroot.c (chroot): Return ENOENT when path
+        is empty.
+
+---
+ hurd/hurdchdir.c           |    6 ++++++
+ sysdeps/mach/hurd/chroot.c |    6 ++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/hurd/hurdchdir.c b/hurd/hurdchdir.c
+index 5115e4d..b1cc7a5 100644
+--- a/hurd/hurdchdir.c
++++ b/hurd/hurdchdir.c
+@@ -38,6 +38,12 @@ _hurd_change_directory_port_from_name (struct hurd_port *portcell,
+   len = strlen (name);
+   if (len >= 2 && name[len - 2] == '/' && name[len - 1] == '.')
+     lookup = name;
++  else if (len == 0)
++    {
++      /* Special-case null pathname according to POSIX */
++      errno = ENOENT;
++      return -1;
++    }
+   else
+     {
+       char *n = alloca (len + 3);
+diff --git a/sysdeps/mach/hurd/chroot.c b/sysdeps/mach/hurd/chroot.c
+index fde0164..cabeb7d 100644
+--- a/sysdeps/mach/hurd/chroot.c
++++ b/sysdeps/mach/hurd/chroot.c
+@@ -38,6 +38,12 @@ chroot (const char *path)
+   len = strlen (path);
+   if (len >= 2 && path[len - 2] == '/' && path[len - 1] == '.')
+     lookup = path;
++  else if (len == 0)
++    {
++      /* Special-case null pathname according to POSIX */
++      errno = ENOENT;
++      return -1;
++    }
+   else
+     {
+       char *n = alloca (len + 3);
