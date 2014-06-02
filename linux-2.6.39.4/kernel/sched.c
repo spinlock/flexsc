@@ -71,6 +71,7 @@
 #include <linux/ctype.h>
 #include <linux/ftrace.h>
 #include <linux/slab.h>
+#include <linux/flexsc.h>
 
 #include <asm/tlb.h>
 #include <asm/irq_regs.h>
@@ -3913,6 +3914,10 @@ void scheduler_tick(void)
 	struct rq *rq = cpu_rq(cpu);
 	struct task_struct *curr = rq->curr;
 
+    if (likely(curr->syspage != NULL)) {
+        flexsc_tick(curr->syspage);
+    }
+
 	sched_clock_tick();
 
 	raw_spin_lock(&rq->lock);
@@ -4078,6 +4083,18 @@ asmlinkage void __sched schedule(void)
 	struct rq *rq;
 	int cpu;
 
+    struct task_struct *flexsc_task;
+    int flexsc_task_is_worker = 0;
+
+    flexsc_task = current;
+    if (unlikely(flexsc_task->syspage != NULL)) {
+        if (likely(flexsc_task->state != TASK_RUNNING &&
+                   flexsc_task->worker_kstate == KSTATE_WORKING)) {
+            flexsc_task_is_worker = 1;
+            flexsc_task->flexsc_get_schedule(flexsc_task);
+        }
+    }
+
 need_resched:
 	preempt_disable();
 	cpu = smp_processor_id();
@@ -4157,6 +4174,10 @@ need_resched:
 	preempt_enable_no_resched();
 	if (need_resched())
 		goto need_resched;
+
+    if (flexsc_task_is_worker) {
+        flexsc_task->flexsc_put_schedule(flexsc_task); 
+    }
 }
 EXPORT_SYMBOL(schedule);
 
@@ -5235,6 +5256,12 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	/* Prevent p going away */
 	get_task_struct(p);
 	rcu_read_unlock();
+
+    if (unlikely(p->syspage != NULL)) {
+        printk("sched_setaffinity flexsc thread %d\n", p->pid);
+        retval = -EINVAL;
+        goto out_put_task;
+    }
 
 	if (!alloc_cpumask_var(&cpus_allowed, GFP_KERNEL)) {
 		retval = -ENOMEM;

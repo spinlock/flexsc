@@ -955,6 +955,9 @@ static int fault_in_kernel_space(unsigned long address)
  * and the problem, and then passes it off to one of the appropriate
  * routines.
  */
+
+extern int flexsc_kstruct_pgfault(struct task_struct *task, unsigned long address);
+
 dotraplinkage void __kprobes
 do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
@@ -1124,13 +1127,17 @@ good_area:
 		bad_area_access_error(regs, error_code, address);
 		return;
 	}
+    if (unlikely(flexsc_kstruct_pgfault(tsk, address))) {
+        bad_area_access_error(regs, error_code, address);
+        return ;
+    }
 
 	/*
 	 * If for any reason at all we couldn't handle the fault,
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault:
 	 */
-	fault = handle_mm_fault(mm, vma, address, flags);
+    fault = handle_mm_fault(mm, vma, address, flags);
 
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		mm_fault_error(regs, error_code, address, fault);

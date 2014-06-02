@@ -484,6 +484,29 @@ system_call_fastpath:
 	cmpq $__NR_syscall_max,%rax
 	ja badsys
 	movq %r10,%rcx
+
+    cmpq $__SYSNUM_flexsc_base, %rax
+    jae __do_syscall1
+
+    pushq %rax
+    pushq %r9
+    pushq %r8
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    movq %rsp, %rsi
+    movq %rax, %rdi
+    callq flexsc_syscall_hook
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %r8
+    popq %r9
+    popq %rax
+
+__do_syscall1:
 	call *sys_call_table(,%rax,8)  # XXX:	 rip relative
 	movq %rax,RAX-ARGOFFSET(%rsp)
 /*
@@ -600,6 +623,29 @@ tracesys:
 	cmpq $__NR_syscall_max,%rax
 	ja   int_ret_from_sys_call	/* RAX(%rsp) set to -ENOSYS above */
 	movq %r10,%rcx	/* fixup for C */
+
+    cmpq $__SYSNUM_flexsc_base, %rax
+    jae __do_syscall2
+
+    pushq %rax
+    pushq %r9
+    pushq %r8
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    movq %rsp, %rsi
+    movq %rax, %rdi
+    callq flexsc_syscall_hook
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %r8
+    popq %r9
+    popq %rax
+
+__do_syscall2:
 	call *sys_call_table(,%rax,8)
 	movq %rax,RAX-ARGOFFSET(%rsp)
 	/* Use IRET because user could have changed frame */

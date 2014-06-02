@@ -844,4 +844,17 @@ asmlinkage long sys_name_to_handle_at(int dfd, const char __user *name,
 asmlinkage long sys_open_by_handle_at(int mountdirfd,
 				      struct file_handle __user *handle,
 				      int flags);
+
+struct flexsc_initinfo;
+struct flexsc_sysentry;
+struct sysbox_pool;
+
+asmlinkage void sys_flexsc_test_lock(void);
+
+asmlinkage long sys_flexsc_init(struct flexsc_initinfo __user *info);
+asmlinkage long sys_flexsc_debug(char __user *ptr, size_t len);
+asmlinkage void sys_flexsc_start(int cpu, struct sysbox_pool *pool);
+asmlinkage void sys_flexsc_serve(int cpu, int *cpulist, size_t size);
+asmlinkage int sys_flexsc_syscall(int wait_size);
+
 #endif

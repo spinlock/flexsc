@@ -192,8 +192,9 @@ extern struct cred init_cred;
 	INIT_FTRACE_GRAPH						\
 	INIT_TRACE_RECURSION						\
 	INIT_TASK_RCU_PREEMPT(tsk)					\
+    .kstruct = NULL,                            \
+    .syspage = NULL,                            \
 }
-
 
 #define INIT_CPU_TIMERS(cpu_timers)					\
 {									\

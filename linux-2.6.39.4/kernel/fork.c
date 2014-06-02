@@ -68,6 +68,7 @@
 #include <linux/user-return-notifier.h>
 #include <linux/oom.h>
 #include <linux/khugepaged.h>
+#include <linux/flexsc.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1003,6 +1004,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	struct task_struct *p;
 	int cgroup_callbacks_done = 0;
 
+    const unsigned long clone_kstruct_mask = (CLONE_VM | CLONE_FS | CLONE_FILES);
+    int clone_kstruct = ((clone_flags & clone_kstruct_mask) == clone_kstruct_mask);
+
 	if ((clone_flags & (CLONE_NEWNS|CLONE_FS)) == (CLONE_NEWNS|CLONE_FS))
 		return ERR_PTR(-EINVAL);
 
@@ -1314,6 +1318,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	proc_fork_connector(p);
 	cgroup_post_fork(p);
 	perf_event_fork(p);
+
+    p->kstruct = (clone_kstruct ? copy_flexsc_kstruct(current) : NULL);
+    p->syspage = NULL;
 	return p;
 
 bad_fork_free_pid:

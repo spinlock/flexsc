@@ -1,0 +1,26 @@
+MAKE := make -f Makefile --no-print-directory
+NCPU := $(shell echo "`cat /proc/cpuinfo | grep processor | wc -l` * 2" | bc)
+VERSION := 2.6.39.4-final+
+V := @
+
+all:
+	$(V)$(MAKE) -j$(NCPU)
+
+modules:
+	$(V)$(MAKE) -j$(NCPU) $@
+
+install:
+	$(V)$(MAKE) install
+	mkinitramfs $(VERSION) -o /boot/initrd.img-$(VERSION)
+	$(V)rm -f /boot/*.old
+
+modules_install clean distclean:
+	$(V)$(MAKE) $@
+
+grub:
+	$(V)update-grub
+
+config:
+	$(V)yes "" | $(MAKE) oldconfig
+	$(V)yes "" | $(MAKE) localmodconfig
+	$(V)$(MAKE) menuconfig

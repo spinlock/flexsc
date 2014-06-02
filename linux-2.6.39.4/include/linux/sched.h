@@ -1190,6 +1190,14 @@ enum perf_event_task_context {
 	perf_nr_task_contexts,
 };
 
+enum flexsc_kstate {
+    KSTATE_NONE = 0x100,
+    KSTATE_WORKING,
+};
+
+struct flexsc_kstruct;
+struct flexsc_syspage;
+
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 	void *stack;
@@ -1540,6 +1548,18 @@ struct task_struct {
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 	atomic_t ptrace_bp_refcnt;
 #endif
+
+    struct {
+        char __x[0];
+    } __padding __attribute__ ((aligned(64)));
+
+    struct flexsc_kstruct *kstruct;
+    struct flexsc_syspage *syspage;
+    void (*flexsc_get_schedule)(struct task_struct *task);
+    void (*flexsc_put_schedule)(struct task_struct *task);
+
+    struct list_head worker_link;
+    volatile enum flexsc_kstate worker_kstate;
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */

@@ -51,6 +51,7 @@
 #include <trace/events/sched.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/oom.h>
+#include <linux/flexsc.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -948,6 +949,8 @@ NORET_TYPE void do_exit(long code)
 		set_current_state(TASK_UNINTERRUPTIBLE);
 		schedule();
 	}
+
+    exit_flexsc_kstruct(tsk, code);
 
 	exit_irq_thread();
 

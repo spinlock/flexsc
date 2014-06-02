@@ -678,6 +678,27 @@ __SYSCALL(__NR_clock_adjtime, sys_clock_adjtime)
 #define __NR_syncfs                             306
 __SYSCALL(__NR_syncfs, sys_syncfs)
 
+#define __FLEXSC_SYSCALL(name)          \
+    __SYSCALL(__NR_##name, sys_##name)
+
+#define __NR_flexsc_test_lock           349
+
+__FLEXSC_SYSCALL(flexsc_test_lock)
+
+#define __SYSNUM_flexsc_base            350
+
+#define __NR_flexsc_init                350
+#define __NR_flexsc_debug               351
+#define __NR_flexsc_start               352
+#define __NR_flexsc_serve               353
+#define __NR_flexsc_syscall             354
+
+__FLEXSC_SYSCALL(flexsc_init)
+__FLEXSC_SYSCALL(flexsc_debug)
+__FLEXSC_SYSCALL(flexsc_start)
+__FLEXSC_SYSCALL(flexsc_serve)
+__FLEXSC_SYSCALL(flexsc_syscall)
+
 #ifndef __NO_STUBS
 #define __ARCH_WANT_OLD_READDIR
 #define __ARCH_WANT_OLD_STAT
